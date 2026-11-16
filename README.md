@@ -175,10 +175,43 @@ and set `filesystem_mirror { path = "<mirror>" }` in the same file.
 | `make tidy` | `go mod tidy`. |
 | `make testacc` | Acceptance tests with OpenTofu against a real tenant. Needs `IGNITIFY_API_URL` and `IGNITIFY_API_KEY` (an owner key). They create objects with random names and destroy them. The deployment test builds twice and needs a tier with webhooks and two free deployment slots. |
 | `make check-cases PLATFORM_DIR=<path>` | Checks that `internal/source/testdata/cases.json` (the shared file-selection cases) equals the platform's copy byte for byte. Skipped without `PLATFORM_DIR`. |
+| `make docs` | Generate the registry docs in `docs/` with a pinned `tfplugindocs`. |
+| `make docs-check` | Fail when `docs/` differs from what `make docs` makes. |
+| `make notices` | Write `THIRD_PARTY_NOTICES` with a pinned `go-licenses`; fail on a licence outside MPL-2.0, MIT, BSD and Apache-2.0. |
+| `make notices-check` | Fail when `THIRD_PARTY_NOTICES` is stale. |
+| `make release-check` | `goreleaser check` and a local snapshot build (no publish, no signature) in a pinned container, into `dist/`. |
+| `make secret-scan` | `gitleaks` over the whole git history in a pinned container. |
 
-The Go and OpenTofu images and every Go module are pinned to exact versions.
+Every image, tool and Go module is pinned to an exact version. The tools
+(`tfplugindocs`, `go-licenses`) are pinned in `tools/go.mod`.
+
+## Documentation
+
+The registry docs are in `docs/`, generated from the provider schema and the
+examples in `examples/provider`, `examples/resources` and
+`examples/data-sources` (`make docs`). `examples/access` and `examples/app`
+are the two full root modules described above.
+
+## Security
+
+Do not report a security issue in a public issue or pull request. Report it
+privately by email to the project's security contact; the address is added
+here before the first public release.
+
+## Contributing
+
+Pull requests are welcome. Every commit needs a `Signed-off-by:` line
+(`git commit -s`): the sign-off states that you may submit the change under
+the [Developer Certificate of Origin](https://developercertificate.org/). No
+bot checks it; a maintainer does before the merge. There is no contributor
+licence agreement: a contribution comes in under MPL-2.0 and you keep the
+copyright of your code. The issue tracker opens with v0.3.
 
 ## Licence
 
-Mozilla Public License 2.0, see `LICENSE`. "Ignitify" is a trademark of its
-owner; the licence grants no right to use it (MPL-2.0 §2.3).
+Mozilla Public License 2.0, see `LICENSE`. Each release zip also carries
+`THIRD_PARTY_NOTICES`, the licences of the Go modules built into the binary.
+
+"Ignitify" is a trademark. The licence gives no right to use it (MPL-2.0
+§2.3): a fork must not use the name in a way that suggests it is the
+original or endorsed.
