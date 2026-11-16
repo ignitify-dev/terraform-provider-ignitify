@@ -1,0 +1,17 @@
+# Build output
+/bin/
+
+# Terraform and OpenTofu working files: state can hold API keys
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+.terraformrc
+terraform.rc
+
+# Local environment
+.env
+*.env
+.DS_Store
