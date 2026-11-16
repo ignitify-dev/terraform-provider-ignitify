@@ -96,7 +96,7 @@ func (f *fakeAPI) createTask(w http.ResponseWriter, _ *http.Request, body map[st
 	slug, _ := body["slug"].(string)
 	if t, ok := f.app.tasks[slug]; ok {
 		if !t.deleted {
-			plainError(w, http.StatusConflict, client.TaskSlugTakenMessage)
+			refuse(w, http.StatusConflict, client.ReasonTaskSlugTaken, taskSlugTakenMessage)
 			return
 		}
 		t.deleted = false
@@ -111,7 +111,7 @@ func (f *fakeAPI) createTask(w http.ResponseWriter, _ *http.Request, body map[st
 func (f *fakeAPI) getTask(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	t := f.liveTask(r.PathValue("id"))
 	if t == nil {
-		plainError(w, http.StatusNotFound, client.GoneTaskMessage)
+		refuse(w, http.StatusNotFound, client.ReasonTaskNotFound, taskNotFoundMessage)
 		return
 	}
 	writeJSON(w, http.StatusOK, t.task)
@@ -121,7 +121,7 @@ func (f *fakeAPI) getTask(w http.ResponseWriter, r *http.Request, _ map[string]a
 func (f *fakeAPI) deleteTask(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	t := f.liveTask(r.PathValue("id"))
 	if t == nil {
-		plainError(w, http.StatusNotFound, client.GoneTaskMessage)
+		refuse(w, http.StatusNotFound, client.ReasonTaskNotFound, taskNotFoundMessage)
 		return
 	}
 	t.deleted = true
@@ -141,7 +141,7 @@ func (f *fakeAPI) deleteTask(w http.ResponseWriter, r *http.Request, _ map[strin
 func (f *fakeAPI) createHook(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	t := f.liveTask(r.PathValue("id"))
 	if t == nil {
-		plainError(w, http.StatusNotFound, client.GoneTaskMessage)
+		refuse(w, http.StatusNotFound, client.ReasonTaskNotFound, taskNotFoundMessage)
 		return
 	}
 	h := client.Hook{TaskID: t.task.ID, ResourceID: f.id("hook"), HookID: f.id("trigger"), CreatedAt: fakeTime}
@@ -158,7 +158,7 @@ func (f *fakeAPI) createHook(w http.ResponseWriter, r *http.Request, _ map[strin
 func (f *fakeAPI) getHook(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	h, ok := f.app.hooks[r.PathValue("id")]
 	if !ok || h.deleted {
-		plainError(w, http.StatusNotFound, client.GoneHookMessage)
+		refuse(w, http.StatusNotFound, client.ReasonHookNotFound, hookNotFoundMessage)
 		return
 	}
 	writeJSON(w, http.StatusOK, h.hook)
@@ -167,7 +167,7 @@ func (f *fakeAPI) getHook(w http.ResponseWriter, r *http.Request, _ map[string]a
 func (f *fakeAPI) deleteHook(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	h, ok := f.app.hooks[r.PathValue("id")]
 	if !ok || h.deleted {
-		plainError(w, http.StatusNotFound, client.GoneHookMessage)
+		refuse(w, http.StatusNotFound, client.ReasonHookNotFound, hookNotFoundMessage)
 		return
 	}
 	h.deleted = true
@@ -196,7 +196,7 @@ func (f *fakeAPI) createDeployment(w http.ResponseWriter, r *http.Request, _ map
 	}
 	t := f.liveTask(r.FormValue("task_id"))
 	if t == nil || t.task.ID != r.FormValue("task_id") {
-		plainError(w, http.StatusNotFound, client.GoneTaskMessage)
+		refuse(w, http.StatusNotFound, client.ReasonTaskNotFound, taskNotFoundMessage)
 		return
 	}
 	file, _, err := r.FormFile("bundle")
@@ -324,7 +324,7 @@ func (f *fakeAPI) liveDeployment(id string) *fakeDeployment {
 func (f *fakeAPI) getDeployment(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	d := f.liveDeployment(r.PathValue("id"))
 	if d == nil {
-		plainError(w, http.StatusNotFound, client.GoneDeploymentMessage)
+		refuse(w, http.StatusNotFound, client.ReasonDeploymentNotFound, deploymentNotFoundMessage)
 		return
 	}
 	if d.dep.Status == client.DeploymentBuilding {
@@ -347,7 +347,7 @@ func (f *fakeAPI) deleteDeployment(w http.ResponseWriter, r *http.Request, _ map
 	}
 	d := f.liveDeployment(r.PathValue("id"))
 	if d == nil {
-		plainError(w, http.StatusNotFound, client.GoneDeploymentMessage)
+		refuse(w, http.StatusNotFound, client.ReasonDeploymentNotFound, deploymentNotFoundMessage)
 		return
 	}
 	d.deleted = true
@@ -380,11 +380,11 @@ func (f *fakeAPI) listDeployments(w http.ResponseWriter, r *http.Request, _ map[
 func (f *fakeAPI) setNotify(w http.ResponseWriter, r *http.Request, body map[string]any) {
 	d := f.liveDeployment(r.PathValue("id"))
 	if d == nil {
-		plainError(w, http.StatusNotFound, client.GoneDeploymentMessage)
+		refuse(w, http.StatusNotFound, client.ReasonDeploymentNotFound, deploymentNotFoundMessage)
 		return
 	}
 	if f.app.refuseNotify {
-		plainError(w, http.StatusForbidden, "capability may_use_webhooks is not in this tier")
+		refuse(w, http.StatusForbidden, "capability-denied", "capability may_use_webhooks is not in this tier")
 		return
 	}
 	url, isString := body["url"].(string)

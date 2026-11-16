@@ -125,5 +125,5 @@ func TestHookOnUnknownTask(t *testing.T) {
 	_, c := newFakeAPI(t)
 	h := newHarness(t, newHookResource, c)
 	_, diags := h.create(hookConfig("ghost"))
-	mustFail(t, diags, client.GoneTaskMessage)
+	mustFail(t, diags, taskNotFoundMessage)
 }

@@ -67,58 +67,40 @@ const (
 )
 
 // answerRule names one exact error answer of a route: this status with a JSON
-// error body that carries this reason, or (from a server that sends no reason
-// for it) no reason and exactly this error text. Any other answer with the
-// same status (an unknown route, a proxy page) does not match. The zero rule
-// matches nothing.
+// error body that carries this reason. Any other answer with the same status
+// (an unknown route, a proxy page, a body with no reason) does not match. The
+// zero rule matches nothing.
 type answerRule struct {
-	status  int
-	reason  string
-	message string
+	status int
+	reason string
 }
 
-// The error texts of answers that older servers send without a reason.
-const (
-	GoneKeyMessage        = "no live key with that id in this tenant"
-	GoneSecretMessage     = "secret not found"
-	GoneTaskMessage       = "task not found or does not belong to this tenant"
-	GoneDeploymentMessage = "deployment not found"
-	GoneHookMessage       = "not found"
-	// TaskSlugTakenMessage is the 409 of a task create on a live task's slug.
-	TaskSlugTakenMessage = "a task with this slug already exists for this tenant"
-)
-
 // goneAnswer is a route's "no such object" 404. Pure.
-func goneAnswer(reason, message string) answerRule {
-	return answerRule{status: http.StatusNotFound, reason: reason, message: message}
+func goneAnswer(reason string) answerRule {
+	return answerRule{status: http.StatusNotFound, reason: reason}
 }
 
 // The "no such object" 404 of each route the provider reads or deletes. Only
 // that answer means "gone", so a wrong path never drops an object from the state.
 var (
-	goneUser       = goneAnswer(ReasonUserNotFound, "")
-	goneGroup      = goneAnswer(ReasonGroupNotFound, "")
-	goneKey        = goneAnswer(ReasonKeyNotFound, GoneKeyMessage)
-	goneSecret     = goneAnswer(ReasonSecretNotFound, GoneSecretMessage)
-	goneTask       = goneAnswer(ReasonTaskNotFound, GoneTaskMessage)
-	goneDeployment = goneAnswer(ReasonDeploymentNotFound, GoneDeploymentMessage)
-	goneHook       = goneAnswer(ReasonHookNotFound, GoneHookMessage)
+	goneUser       = goneAnswer(ReasonUserNotFound)
+	goneGroup      = goneAnswer(ReasonGroupNotFound)
+	goneKey        = goneAnswer(ReasonKeyNotFound)
+	goneSecret     = goneAnswer(ReasonSecretNotFound)
+	goneTask       = goneAnswer(ReasonTaskNotFound)
+	goneDeployment = goneAnswer(ReasonDeploymentNotFound)
+	goneHook       = goneAnswer(ReasonHookNotFound)
 )
 
 // taskSlugTaken is the refusal of a task create on the slug of a live task.
-var taskSlugTaken = answerRule{status: http.StatusConflict, reason: ReasonTaskSlugTaken, message: TaskSlugTakenMessage}
+var taskSlugTaken = answerRule{status: http.StatusConflict, reason: ReasonTaskSlugTaken}
 
 // secretExists is the refusal of a create-only secret write on a name that exists.
 var secretExists = answerRule{status: http.StatusPreconditionFailed, reason: ReasonSecretExists}
 
 // matches reports whether an error answer is this rule's answer. Pure.
 func (g answerRule) matches(e *APIError) bool {
-	if g.status == 0 || e.Status != g.status || !e.apiShaped {
-		return false
-	}
-	byReason := g.reason != "" && e.Reason == g.reason
-	byOldText := g.message != "" && e.Reason == "" && e.Message == g.message
-	return byReason || byOldText
+	return g.status != 0 && g.reason != "" && e.Status == g.status && e.apiShaped && e.Reason == g.reason
 }
 
 // parseAPIError builds the error of a non-2xx answer from its status and body,

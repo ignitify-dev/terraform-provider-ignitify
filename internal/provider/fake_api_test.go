@@ -95,6 +95,16 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+// The error texts of the fake API; a client branches on the reason, never the text.
+const (
+	keyNotFoundMessage        = "no live key with that id in this tenant"
+	secretNotFoundMessage     = "secret not found"
+	taskNotFoundMessage       = "task not found or does not belong to this tenant"
+	deploymentNotFoundMessage = "deployment not found"
+	hookNotFoundMessage       = "not found"
+	taskSlugTakenMessage      = "a task with this slug already exists for this tenant"
+)
+
 func refuse(w http.ResponseWriter, status int, reason, message string) {
 	writeJSON(w, status, map[string]string{"error": message, "reason": reason})
 }
@@ -285,7 +295,7 @@ func (f *fakeAPI) createKey(w http.ResponseWriter, _ *http.Request, body map[str
 func (f *fakeAPI) getKey(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	k, ok := f.keys[r.PathValue("id")]
 	if !ok {
-		plainError(w, http.StatusNotFound, client.GoneKeyMessage)
+		refuse(w, http.StatusNotFound, client.ReasonKeyNotFound, keyNotFoundMessage)
 		return
 	}
 	writeJSON(w, http.StatusOK, k)
@@ -298,7 +308,7 @@ func (f *fakeAPI) revokeKey(w http.ResponseWriter, r *http.Request, _ map[string
 	}
 	id := r.PathValue("id")
 	if _, ok := f.keys[id]; !ok {
-		plainError(w, http.StatusNotFound, client.GoneKeyMessage)
+		refuse(w, http.StatusNotFound, client.ReasonKeyNotFound, keyNotFoundMessage)
 		return
 	}
 	delete(f.keys, id)
@@ -331,7 +341,7 @@ func (f *fakeAPI) getSecret(w http.ResponseWriter, r *http.Request, _ map[string
 	}
 	s, ok := f.secrets[r.PathValue("name")]
 	if !ok || f.secretReadMisses {
-		plainError(w, http.StatusNotFound, client.GoneSecretMessage)
+		refuse(w, http.StatusNotFound, client.ReasonSecretNotFound, secretNotFoundMessage)
 		return
 	}
 	writeJSON(w, http.StatusOK, s)
@@ -340,7 +350,7 @@ func (f *fakeAPI) getSecret(w http.ResponseWriter, r *http.Request, _ map[string
 func (f *fakeAPI) deleteSecret(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	name := r.PathValue("name")
 	if _, ok := f.secrets[name]; !ok {
-		plainError(w, http.StatusNotFound, client.GoneSecretMessage)
+		refuse(w, http.StatusNotFound, client.ReasonSecretNotFound, secretNotFoundMessage)
 		return
 	}
 	delete(f.secrets, name)

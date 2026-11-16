@@ -81,10 +81,11 @@ func TestRetryKeepsTheIdempotencyKey(t *testing.T) {
 		case 1:
 			w.Header().Set("Retry-After", "2")
 			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":"too many requests","reason":"rate-limited"}`))
 		case 2:
 			// The first try of this key is still running on the server.
 			w.WriteHeader(http.StatusConflict)
-			_, _ = w.Write([]byte(`{"error":"a request with this Idempotency-Key is still being processed"}`))
+			_, _ = w.Write([]byte(`{"error":"a request with this Idempotency-Key is still being processed","reason":"idempotency-in-progress"}`))
 		default:
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"name":"A","stored":true}`))
@@ -139,26 +140,19 @@ func TestGoneOnlyForTheRoutesOwn404(t *testing.T) {
 		{"user, another reason", `{"error":"no group","reason":"group-not-found"}`, func(c *Client) error { _, err := c.GetUser(context.Background(), "a"); return err }, false},
 		{"user, html page", `<html>Cannot GET</html>`, func(c *Client) error { return c.DeleteUser(context.Background(), "a") }, false},
 		{"group, its reason", `{"error":"no group","reason":"group-not-found"}`, func(c *Client) error { return c.DeleteGroup(context.Background(), "a") }, true},
-		{"key, its text", `{"error":"no live key with that id in this tenant"}`, func(c *Client) error { _, err := c.GetKey(context.Background(), "k"); return err }, true},
-		{"key, generic json", `{"error":"not found"}`, func(c *Client) error { return c.RevokeKey(context.Background(), "k") }, false},
+		{"key, no reason", `{"error":"no live key with that id in this tenant"}`, func(c *Client) error { return c.RevokeKey(context.Background(), "k") }, false},
 		{"key, html page", `not json`, func(c *Client) error { _, err := c.GetKey(context.Background(), "k"); return err }, false},
-		{"secret, its text", `{"error":"secret not found"}`, func(c *Client) error { return c.DeleteSecret(context.Background(), "A") }, true},
-		{"secret, with a reason", `{"error":"secret not found","reason":"user-not-found"}`, func(c *Client) error { _, err := c.GetSecret(context.Background(), "A"); return err }, false},
-		{"task, its text", `{"error":"task not found or does not belong to this tenant"}`, func(c *Client) error { _, err := c.GetTask(context.Background(), "t"); return err }, true},
-		{"task, generic json", `{"error":"not found"}`, func(c *Client) error { return c.DeleteTask(context.Background(), "t") }, false},
-		{"deployment, its text", `{"error":"deployment not found"}`, func(c *Client) error { _, err := c.GetDeployment(context.Background(), "d"); return err }, true},
+		{"secret, another reason", `{"error":"secret not found","reason":"user-not-found"}`, func(c *Client) error { _, err := c.GetSecret(context.Background(), "A"); return err }, false},
+		{"task, no reason", `{"error":"task not found or does not belong to this tenant"}`, func(c *Client) error { return c.DeleteTask(context.Background(), "t") }, false},
 		{"deployment, html page", `<html>Cannot GET</html>`, func(c *Client) error { return c.DeleteDeployment(context.Background(), "d") }, false},
-		{"hook, its text", `{"error":"not found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, true},
-		{"hook, with a reason", `{"error":"not found","reason":"user-not-found"}`, func(c *Client) error { return c.DeleteHook(context.Background(), "h") }, false},
-		// A newer server names each 404 with its own reason; the text may change.
-		{"key, new body", `{"error":"no such key","reason":"key-not-found"}`, func(c *Client) error { _, err := c.GetKey(context.Background(), "k"); return err }, true},
-		{"secret, new body", `{"error":"secret not found","reason":"secret-not-found"}`, func(c *Client) error { return c.DeleteSecret(context.Background(), "A") }, true},
-		{"task, new body", `{"error":"no such task","reason":"task-not-found"}`, func(c *Client) error { _, err := c.GetTask(context.Background(), "t"); return err }, true},
-		{"deployment, new body", `{"error":"deployment not found","reason":"deployment-not-found"}`, func(c *Client) error { return c.DeleteDeployment(context.Background(), "d") }, true},
-		{"hook, new body", `{"error":"no such hook","reason":"hook-not-found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, true},
+		{"hook, another reason", `{"error":"not found","reason":"user-not-found"}`, func(c *Client) error { return c.DeleteHook(context.Background(), "h") }, false},
+		{"key, its reason", `{"error":"no such key","reason":"key-not-found"}`, func(c *Client) error { _, err := c.GetKey(context.Background(), "k"); return err }, true},
+		{"secret, its reason", `{"error":"secret not found","reason":"secret-not-found"}`, func(c *Client) error { return c.DeleteSecret(context.Background(), "A") }, true},
+		{"task, its reason", `{"error":"no such task","reason":"task-not-found"}`, func(c *Client) error { _, err := c.GetTask(context.Background(), "t"); return err }, true},
+		{"deployment, its reason", `{"error":"deployment not found","reason":"deployment-not-found"}`, func(c *Client) error { return c.DeleteDeployment(context.Background(), "d") }, true},
+		{"hook, its reason", `{"error":"no such hook","reason":"hook-not-found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, true},
 		{"hook, unknown route", `{"error":"no such route","reason":"route-not-found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, false},
 		{"task, another route's reason", `{"error":"no such hook","reason":"hook-not-found"}`, func(c *Client) error { return c.DeleteTask(context.Background(), "t") }, false},
-		{"secret, old text with the unknown-route reason", `{"error":"secret not found","reason":"route-not-found"}`, func(c *Client) error { _, err := c.GetSecret(context.Background(), "A"); return err }, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -213,22 +207,22 @@ func TestDecideRetry(t *testing.T) {
 	}{
 		{"network error", attemptOutcome{transportFailed: true, now: now}, retryDecision{retry: true, wait: time.Second}},
 		{"network error, last try", attemptOutcome{attempt: maxAttempts - 1, transportFailed: true}, noRetry},
-		{"429 no header backs off", attemptOutcome{attempt: 1, status: 429, now: now}, retryDecision{retry: true, wait: 2 * time.Second}},
+		{"429 no header, no reason, fails at once", attemptOutcome{attempt: 1, status: 429, now: now}, noRetry},
 		{"429 quota refusal fails at once", attemptOutcome{status: 429, reason: "api-key-quota", now: now}, noRetry},
 		{"429 quota refusal with header", attemptOutcome{status: 429, reason: "api-key-quota", retryAfter: "1", now: now}, retryDecision{retry: true, wait: time.Second}},
-		{"429 header capped", attemptOutcome{status: 429, retryAfter: "3600", now: now}, retryDecision{retry: true, wait: maxWait}},
+		{"429 long wait, no reason, fails at once", attemptOutcome{status: 429, retryAfter: "3600", now: now}, retryDecision{refusedWait: time.Hour}},
 		{"429 hour window with a reason fails at once", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "3600", now: now}, retryDecision{refusedWait: time.Hour}},
 		{"429 wait just over the cap with a reason", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "31", now: now}, retryDecision{refusedWait: 31 * time.Second}},
 		{"429 wait at the cap with a reason retries", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "30", now: now}, retryDecision{retry: true, wait: maxWait}},
 		{"429 minute window with a reason retries", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "20", now: now}, retryDecision{retry: true, wait: 20 * time.Second}},
 		{"429 long date with a reason fails at once", attemptOutcome{status: 429, reason: "deployment-rate-quota", retryAfter: now.Add(time.Hour).Format(http.TimeFormat), now: now}, retryDecision{refusedWait: time.Hour}},
 		{"429 invalid header with a reason", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "soon", now: now}, noRetry},
-		{"429 invalid header, no reason, backs off", attemptOutcome{status: 429, retryAfter: "soon", now: now}, retryDecision{retry: true, wait: time.Second}},
+		{"429 invalid header, rate-limited, backs off", attemptOutcome{status: 429, reason: ReasonRateLimited, retryAfter: "soon", now: now}, retryDecision{retry: true, wait: time.Second}},
 		{"429 negative header with a reason", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "-5", now: now}, noRetry},
 		{"503 with date", attemptOutcome{status: 503, retryAfter: now.Add(5 * time.Second).Format(http.TimeFormat), now: now}, retryDecision{retry: true, wait: 5 * time.Second}},
 		{"503 without header", attemptOutcome{status: 503, now: now}, noRetry},
-		{"409 in progress on a repeat", attemptOutcome{attempt: 1, status: 409, idempotent: true, now: now}, retryDecision{retry: true, wait: 2 * time.Second}},
-		{"409 on the first try", attemptOutcome{status: 409, idempotent: true, now: now}, noRetry},
+		{"409 no reason on a repeat", attemptOutcome{attempt: 1, status: 409, idempotent: true, now: now}, noRetry},
+		{"409 no reason on the first try", attemptOutcome{status: 409, idempotent: true, now: now}, noRetry},
 		{"409 name taken", attemptOutcome{attempt: 1, status: 409, reason: ReasonNameTaken, idempotent: true, now: now}, noRetry},
 		{"429 rate-limited without header backs off", attemptOutcome{status: 429, reason: ReasonRateLimited, now: now}, retryDecision{retry: true, wait: time.Second}},
 		{"429 auth-throttled fails at once", attemptOutcome{status: 429, reason: ReasonAuthThrottled, now: now}, noRetry},
@@ -342,17 +336,17 @@ func TestLongRateWindowFailsAtOnceWithTheWait(t *testing.T) {
 	}
 }
 
-func TestTaskSlugTakenOldAndNewBodies(t *testing.T) {
+func TestTaskSlugTakenByReasonOnly(t *testing.T) {
 	cases := []struct {
 		name   string
 		status int
 		body   string
 		want   bool
 	}{
-		{"old text", http.StatusConflict, `{"error":"a task with this slug already exists for this tenant"}`, true},
-		{"new code", http.StatusConflict, `{"error":"slug in use","reason":"task-slug-taken"}`, true},
-		{"old text with another reason", http.StatusConflict, `{"error":"a task with this slug already exists for this tenant","reason":"name-taken"}`, false},
-		{"new code, wrong status", http.StatusBadRequest, `{"error":"slug in use","reason":"task-slug-taken"}`, false},
+		{"old text, no reason", http.StatusConflict, `{"error":"a task with this slug already exists for this tenant"}`, false},
+		{"its code", http.StatusConflict, `{"error":"slug in use","reason":"task-slug-taken"}`, true},
+		{"another reason", http.StatusConflict, `{"error":"a task with this slug already exists for this tenant","reason":"name-taken"}`, false},
+		{"its code, wrong status", http.StatusBadRequest, `{"error":"slug in use","reason":"task-slug-taken"}`, false},
 		{"another conflict", http.StatusConflict, `{"error":"busy"}`, false},
 		{"not json", http.StatusConflict, `conflict`, false},
 	}

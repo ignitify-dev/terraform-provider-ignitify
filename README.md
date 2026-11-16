@@ -80,7 +80,7 @@ With a user key, an access resource fails with "owner key required".
   added outside Terraform shows as drift. `members` defaults to none.
 - **Retries.** Every write carries an `Idempotency-Key`, so a retry after a lost
   answer never acts twice. The provider retries network errors, a `429` or
-  `503` with `Retry-After`, and the API rate limit (`429` with no reason), a few
+  `503` with `Retry-After`, and the API rate limit (`429` with the reason `rate-limited`), a few
   times with a capped wait. A quota refusal (such as the key or secret cap)
   fails at once, and so does a rate-window refusal that asks for a wait over
   30 seconds (an hour or a day window); the error states the wait. A redirect is never followed.
