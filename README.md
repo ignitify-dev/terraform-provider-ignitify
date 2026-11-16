@@ -122,9 +122,9 @@ With a user key, an access resource fails with "owner key required".
   tier has no webhooks. If the server refuses the notify target when a
   deployment is created, the deployment is kept, the apply warns, and the next
   plan shows `notify_url` as a change and sets it again.
-- **Deployment import.** The API has no "current deployment" of a task, so the
-  task slug imports only a task with exactly one live deployment (what an apply
-  leaves); otherwise use `<task slug>/<deployment id>`. After an import the
+- **Deployment import.** The task slug imports only a task with exactly one
+  live deployment (what an apply leaves); otherwise use
+  `<task slug>/<deployment id>`. After an import the
   state has no `source_dir`: the first apply uploads the folder (the same code
   reuses the same deployment).
 - **Hooks** belong to the task: a code update keeps the URL and the secret.
