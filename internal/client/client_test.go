@@ -4,6 +4,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -201,15 +202,23 @@ func TestDecideRetry(t *testing.T) {
 		in   attemptOutcome
 		want retryDecision
 	}{
-		{"network error", attemptOutcome{transportFailed: true, now: now}, retryDecision{true, time.Second}},
+		{"network error", attemptOutcome{transportFailed: true, now: now}, retryDecision{retry: true, wait: time.Second}},
 		{"network error, last try", attemptOutcome{attempt: maxAttempts - 1, transportFailed: true}, noRetry},
-		{"429 no header backs off", attemptOutcome{attempt: 1, status: 429, now: now}, retryDecision{true, 2 * time.Second}},
+		{"429 no header backs off", attemptOutcome{attempt: 1, status: 429, now: now}, retryDecision{retry: true, wait: 2 * time.Second}},
 		{"429 quota refusal fails at once", attemptOutcome{status: 429, reason: "api-key-quota", now: now}, noRetry},
-		{"429 quota refusal with header", attemptOutcome{status: 429, reason: "api-key-quota", retryAfter: "1", now: now}, retryDecision{true, time.Second}},
-		{"429 header capped", attemptOutcome{status: 429, retryAfter: "3600", now: now}, retryDecision{true, maxWait}},
-		{"503 with date", attemptOutcome{status: 503, retryAfter: now.Add(5 * time.Second).Format(http.TimeFormat), now: now}, retryDecision{true, 5 * time.Second}},
+		{"429 quota refusal with header", attemptOutcome{status: 429, reason: "api-key-quota", retryAfter: "1", now: now}, retryDecision{retry: true, wait: time.Second}},
+		{"429 header capped", attemptOutcome{status: 429, retryAfter: "3600", now: now}, retryDecision{retry: true, wait: maxWait}},
+		{"429 hour window with a reason fails at once", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "3600", now: now}, retryDecision{refusedWait: time.Hour}},
+		{"429 wait just over the cap with a reason", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "31", now: now}, retryDecision{refusedWait: 31 * time.Second}},
+		{"429 wait at the cap with a reason retries", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "30", now: now}, retryDecision{retry: true, wait: maxWait}},
+		{"429 minute window with a reason retries", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "20", now: now}, retryDecision{retry: true, wait: 20 * time.Second}},
+		{"429 long date with a reason fails at once", attemptOutcome{status: 429, reason: "deployment-rate-quota", retryAfter: now.Add(time.Hour).Format(http.TimeFormat), now: now}, retryDecision{refusedWait: time.Hour}},
+		{"429 invalid header with a reason", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "soon", now: now}, noRetry},
+		{"429 invalid header, no reason, backs off", attemptOutcome{status: 429, retryAfter: "soon", now: now}, retryDecision{retry: true, wait: time.Second}},
+		{"429 negative header with a reason", attemptOutcome{status: 429, reason: "run-rate-quota", retryAfter: "-5", now: now}, noRetry},
+		{"503 with date", attemptOutcome{status: 503, retryAfter: now.Add(5 * time.Second).Format(http.TimeFormat), now: now}, retryDecision{retry: true, wait: 5 * time.Second}},
 		{"503 without header", attemptOutcome{status: 503, now: now}, noRetry},
-		{"409 in progress on a repeat", attemptOutcome{attempt: 1, status: 409, idempotent: true, now: now}, retryDecision{true, 2 * time.Second}},
+		{"409 in progress on a repeat", attemptOutcome{attempt: 1, status: 409, idempotent: true, now: now}, retryDecision{retry: true, wait: 2 * time.Second}},
 		{"409 on the first try", attemptOutcome{status: 409, idempotent: true, now: now}, noRetry},
 		{"409 name taken", attemptOutcome{attempt: 1, status: 409, reason: ReasonNameTaken, idempotent: true, now: now}, noRetry},
 		{"404", attemptOutcome{status: 404, now: now}, noRetry},
@@ -289,5 +298,26 @@ func TestListTaskDeploymentsReadsEveryPage(t *testing.T) {
 	}
 	if len(queries) != 3 || !strings.Contains(queries[1], "after_id=dep-99") || !strings.Contains(queries[0], "task_id=report") {
 		t.Fatalf("queries = %v", queries)
+	}
+}
+
+func TestLongRateWindowFailsAtOnceWithTheWait(t *testing.T) {
+	calls := 0
+	c, waits := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"too many runs this hour","reason":"run-rate-quota"}`))
+	})
+	_, err := c.GetKey(context.Background(), "key_1")
+	if err == nil || !strings.Contains(err.Error(), "rate limit: retry after 3600 s") || !strings.Contains(err.Error(), "too many runs this hour") {
+		t.Fatalf("err = %v", err)
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Reason != "run-rate-quota" {
+		t.Fatalf("err does not wrap the API error: %v", err)
+	}
+	if calls != 1 || len(*waits) != 0 {
+		t.Fatalf("calls = %d, waits = %v, want one call and no wait", calls, *waits)
 	}
 }

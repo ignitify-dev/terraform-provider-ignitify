@@ -82,7 +82,8 @@ With a user key, an access resource fails with "owner key required".
   answer never acts twice. The provider retries network errors, a `429` or
   `503` with `Retry-After`, and the API rate limit (`429` with no reason), a few
   times with a capped wait. A quota refusal (such as the key or secret cap)
-  fails at once. A redirect is never followed.
+  fails at once, and so does a rate-window refusal that asks for a wait over
+  30 seconds (an hour or a day window); the error states the wait. A redirect is never followed.
 - **Tasks.** A destroy deletes the task with its deployments, runs and hooks.
   Creating the same slug again brings back the same task (same `task_id`),
   without them.

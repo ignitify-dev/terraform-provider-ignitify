@@ -36,6 +36,9 @@ type attemptOutcome struct {
 type retryDecision struct {
 	retry bool
 	wait  time.Duration
+	// refusedWait is set with retry false when a refusal with a reason asks
+	// for a wait longer than maxWait (a rate window of an hour or a day).
+	refusedWait time.Duration
 }
 
 var noRetry = retryDecision{}
@@ -44,9 +47,11 @@ var noRetry = retryDecision{}
 // provider sends may be repeated: reads, deletes (a 404 is done), the
 // set-like PUTs, and writes that carry an Idempotency-Key. Retried:
 //   - no answer at all;
-//   - 429 with Retry-After, waiting that long; a 429 without it only when it has
-//     no reason (the API rate limit). A 429 with a reason and no Retry-After is
-//     a tier quota (such as the key or secret cap) and fails at once;
+//   - 429 with Retry-After, waiting that long, up to maxWait; a 429 without it
+//     only when it has no reason (the API rate limit). A 429 with a reason and
+//     no Retry-After is a tier quota (such as the key or secret cap) and fails
+//     at once; so does a 429 with a reason whose Retry-After is longer than
+//     maxWait (a rate window of an hour or a day), reporting that wait;
 //   - 503 only with Retry-After (a 503 without it is a lasting refusal, such as
 //     a platform with no secret vault);
 //   - 409 with no reason on a repeat of an idempotent write: the first try of
@@ -63,7 +68,10 @@ func decideRetry(o attemptOutcome) retryDecision {
 		return retryDecision{retry: true, wait: backoff}
 	case o.status == http.StatusTooManyRequests:
 		if wait, ok := parseRetryAfter(o.retryAfter, o.now); ok {
-			return retryDecision{retry: true, wait: wait}
+			if o.reason != "" && wait > maxWait {
+				return retryDecision{refusedWait: wait}
+			}
+			return retryDecision{retry: true, wait: capWait(wait)}
 		}
 		if o.reason == "" {
 			return retryDecision{retry: true, wait: backoff}
@@ -71,7 +79,7 @@ func decideRetry(o attemptOutcome) retryDecision {
 		return noRetry
 	case o.status == http.StatusServiceUnavailable:
 		if wait, ok := parseRetryAfter(o.retryAfter, o.now); ok {
-			return retryDecision{retry: true, wait: wait}
+			return retryDecision{retry: true, wait: capWait(wait)}
 		}
 		return noRetry
 	case o.status == http.StatusConflict && o.reason == "" && o.idempotent && o.attempt > 0:
@@ -91,7 +99,7 @@ func backoffFor(attempt int) time.Duration {
 }
 
 // parseRetryAfter reads a Retry-After value: delta seconds or an HTTP date,
-// capped at maxWait. A past date waits 0. Pure.
+// not capped. A past date waits 0. Pure.
 func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
 	if value == "" {
 		return 0, false
@@ -100,13 +108,13 @@ func parseRetryAfter(value string, now time.Time) (time.Duration, bool) {
 		if secs < 0 {
 			return 0, false
 		}
-		return capWait(time.Duration(secs) * time.Second), true
+		return time.Duration(secs) * time.Second, true
 	}
 	when, err := http.ParseTime(value)
 	if err != nil {
 		return 0, false
 	}
-	return capWait(max(when.Sub(now), 0)), true
+	return max(when.Sub(now), 0), true
 }
 
 func capWait(d time.Duration) time.Duration {

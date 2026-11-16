@@ -162,6 +162,9 @@ func (c *Client) do(ctx context.Context, r request) error {
 			if sendErr != nil {
 				return fmt.Errorf("%s %s: %w", r.method, r.path, sendErr)
 			}
+			if decision.refusedWait > 0 && apiErr != nil {
+				return fmt.Errorf("rate limit: retry after %d s: %w", int64(decision.refusedWait/time.Second), apiErr)
+			}
 			return apiErr
 		}
 		if err := c.sleep(ctx, decision.wait); err != nil {
