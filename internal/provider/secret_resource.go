@@ -111,19 +111,25 @@ func (r *secretResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 	name := plan.Name.ValueString()
-	// The API write is an upsert. Refuse a name that already exists, so an
-	// apply never overwrites a secret it does not manage without saying so.
+	// Refuse a name that already exists, so an apply never overwrites a
+	// secret it does not manage. The write itself is create-only; the read
+	// first also covers a server that ignores the create-only header.
 	_, err := r.client.GetSecret(ctx, name)
 	switch {
 	case err == nil:
-		resp.Diagnostics.AddError("Secret already exists",
-			fmt.Sprintf("A secret named %s already exists. Import it (terraform import <address> %s) to manage it, or choose another name.", name, name))
+		resp.Diagnostics.Append(secretExistsDiagnostic(name))
 		return
 	case !client.IsGone(err):
 		resp.Diagnostics.Append(apiErrorDiagnostic("read secret", err))
 		return
 	}
-	r.write(ctx, plan, req.Config, &resp.State, &resp.Diagnostics)
+	r.write(ctx, plan, req.Config, r.client.CreateSecret, &resp.State, &resp.Diagnostics)
+}
+
+// secretExistsDiagnostic is the refusal of a create on a name that exists. Pure.
+func secretExistsDiagnostic(name string) diag.Diagnostic {
+	return diag.NewErrorDiagnostic("Secret already exists",
+		fmt.Sprintf("A secret named %s already exists. Import it (terraform import <address> %s) to manage it, or choose another name.", name, name))
 }
 
 func (r *secretResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -152,18 +158,26 @@ func (r *secretResource) Update(ctx context.Context, req resource.UpdateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	r.write(ctx, plan, req.Config, &resp.State, &resp.Diagnostics)
+	r.write(ctx, plan, req.Config, r.client.SetSecret, &resp.State, &resp.Diagnostics)
 }
 
+// secretStore is the API write of a secret value: create-only or replace.
+type secretStore func(ctx context.Context, name, value string) error
+
 // write sends the value from the configuration and records the server's write time.
-func (r *secretResource) write(ctx context.Context, plan secretModel, config tfsdk.Config, state *tfsdk.State, diags *diag.Diagnostics) {
+func (r *secretResource) write(ctx context.Context, plan secretModel, config tfsdk.Config, store secretStore, state *tfsdk.State, diags *diag.Diagnostics) {
 	value, err := secretValueOf(ctx, config)
 	if err != nil {
 		diags.AddError("Missing secret value", err.Error())
 		return
 	}
 	name := plan.Name.ValueString()
-	if err := r.client.SetSecret(ctx, name, value); err != nil {
+	err = store(ctx, name, value)
+	if client.IsSecretExists(err) {
+		diags.Append(secretExistsDiagnostic(name))
+		return
+	}
+	if err != nil {
 		diags.Append(apiErrorDiagnostic("write secret", err))
 		return
 	}

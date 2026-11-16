@@ -44,6 +44,10 @@ type uploadResult struct {
 	Reused bool
 }
 
+// notifyNotSetSummary is the warning of a create whose deployment is live but
+// whose notify target the server refused.
+const notifyNotSetSummary = "Notify target not set"
+
 func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan deploymentModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -75,7 +79,7 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 		// notify_url (Terraform requires the planned value back); the next
 		// refresh reads the server's value, so the next refreshed plan shows the change
 		// and retries only the notify write.
-		resp.Diagnostics.AddWarning("Notify target not set",
+		resp.Diagnostics.AddWarning(notifyNotSetSummary,
 			fmt.Sprintf("Deployment %s is live, but its notify target was not set: %s\nThe next plan with refresh (the default) shows notify_url as a change and sets it again; with -refresh=false it stays unset.", res.Deployment.ID, err))
 		pending := res.Deployment
 		pending.NotifyURL = plan.NotifyURL.ValueStringPointer()

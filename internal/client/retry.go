@@ -48,14 +48,15 @@ var noRetry = retryDecision{}
 // set-like PUTs, and writes that carry an Idempotency-Key. Retried:
 //   - no answer at all;
 //   - 429 with Retry-After, waiting that long, up to maxWait; a 429 without it
-//     only when it has no reason (the API rate limit). A 429 with a reason and
-//     no Retry-After is a tier quota (such as the key or secret cap) and fails
-//     at once; so does a 429 with a reason whose Retry-After is longer than
-//     maxWait (a rate window of an hour or a day), reporting that wait;
+//     only from a short-lived limiter (no reason, or rate-limited). A 429
+//     auth-throttled is never retried: only failed sign-ins are throttled, so
+//     the key itself is refused. Any other 429 with a reason and no Retry-After is a tier
+//     quota (such as the key or secret cap) and fails at once; so does a 429
+//     with a reason whose Retry-After is longer than maxWait (a rate window of
+//     an hour or a day), reporting that wait;
 //   - 503 only with Retry-After (a 503 without it is a lasting refusal, such as
 //     a platform with no secret vault);
-//   - 409 with no reason on a repeat of an idempotent write: the first try of
-//     the same key is still running on the server.
+//   - 409 that says the try may succeed again (retryableConflict).
 //
 // Pure.
 func decideRetry(o attemptOutcome) retryDecision {
@@ -66,6 +67,8 @@ func decideRetry(o attemptOutcome) retryDecision {
 	switch {
 	case o.transportFailed:
 		return retryDecision{retry: true, wait: backoff}
+	case o.status == http.StatusTooManyRequests && o.reason == ReasonAuthThrottled:
+		return noRetry
 	case o.status == http.StatusTooManyRequests:
 		if wait, ok := parseRetryAfter(o.retryAfter, o.now); ok {
 			if o.reason != "" && wait > maxWait {
@@ -73,7 +76,7 @@ func decideRetry(o attemptOutcome) retryDecision {
 			}
 			return retryDecision{retry: true, wait: capWait(wait)}
 		}
-		if o.reason == "" {
+		if isShortLimiter(o.reason) {
 			return retryDecision{retry: true, wait: backoff}
 		}
 		return noRetry
@@ -82,10 +85,39 @@ func decideRetry(o attemptOutcome) retryDecision {
 			return retryDecision{retry: true, wait: capWait(wait)}
 		}
 		return noRetry
-	case o.status == http.StatusConflict && o.reason == "" && o.idempotent && o.attempt > 0:
+	case o.status == http.StatusConflict && retryableConflict(o):
 		return retryDecision{retry: true, wait: backoff}
 	default:
 		return noRetry
+	}
+}
+
+// isShortLimiter reports whether a 429 reason is a limiter that frees up in
+// seconds (the API and hook rate limits), not a tier quota. An older server
+// sends that 429 with no reason. Pure.
+func isShortLimiter(reason string) bool {
+	return reason == "" || reason == ReasonRateLimited
+}
+
+// retryableConflict reports whether a 409 may succeed when tried again:
+//   - idempotency-in-progress on an idempotent write: the first try of the
+//     same key is still running on the server; an older server sends it with
+//     no reason, which is retried only on a repeat (a first try with no reason
+//     is another conflict, such as a taken task slug);
+//   - deployment-race on an idempotent write: the deployment the create
+//     joined vanished; a new try makes or joins another.
+//
+// Pure.
+func retryableConflict(o attemptOutcome) bool {
+	switch o.reason {
+	case ReasonIdempotencyInProgress:
+		return o.idempotent
+	case ReasonDeploymentRace:
+		return o.idempotent
+	case "":
+		return o.idempotent && o.attempt > 0
+	default:
+		return false
 	}
 }
 

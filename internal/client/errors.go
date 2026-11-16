@@ -33,7 +33,7 @@ type APIError struct {
 	// apiShaped is true when the body was the API's JSON error shape (`{ "error": … }`).
 	// An unknown route or a proxy in the way answers another body.
 	apiShaped bool
-	// gone is true when the answer is the route's own "no such object" 404 (goneRule).
+	// gone is true when the answer is the route's own "no such object" 404 (answerRule).
 	gone bool
 }
 
@@ -51,18 +51,33 @@ type errorBody struct {
 	Needed string `json:"needed"`
 }
 
-// goneRule names the exact 404 a route answers when its object does not
-// exist: a JSON error body with this reason, or (for routes whose 404 has no
-// reason) with this error text. Only that answer means "gone"; any other 404
-// (an unknown route, a proxy page) is an error, so a wrong path never drops an
-// object from the state. The zero rule matches nothing.
-type goneRule struct {
+// The `reason` codes of the error answers the provider branches on.
+const (
+	ReasonKeyNotFound           = "key-not-found"
+	ReasonSecretNotFound        = "secret-not-found"
+	ReasonTaskNotFound          = "task-not-found"
+	ReasonDeploymentNotFound    = "deployment-not-found"
+	ReasonHookNotFound          = "hook-not-found"
+	ReasonTaskSlugTaken         = "task-slug-taken"
+	ReasonSecretExists          = "secret-exists"
+	ReasonRateLimited           = "rate-limited"
+	ReasonAuthThrottled         = "auth-throttled"
+	ReasonIdempotencyInProgress = "idempotency-in-progress"
+	ReasonDeploymentRace        = "deployment-race"
+)
+
+// answerRule names one exact error answer of a route: this status with a JSON
+// error body that carries this reason, or (from a server that sends no reason
+// for it) no reason and exactly this error text. Any other answer with the
+// same status (an unknown route, a proxy page) does not match. The zero rule
+// matches nothing.
+type answerRule struct {
+	status  int
 	reason  string
 	message string
 }
 
-// The error texts of the "no such object" 404 of the routes that answer it
-// without a reason.
+// The error texts of answers that older servers send without a reason.
 const (
 	GoneKeyMessage        = "no live key with that id in this tenant"
 	GoneSecretMessage     = "secret not found"
@@ -73,36 +88,43 @@ const (
 	TaskSlugTakenMessage = "a task with this slug already exists for this tenant"
 )
 
-// The "no such object" 404 of each route the provider reads or deletes.
+// goneAnswer is a route's "no such object" 404. Pure.
+func goneAnswer(reason, message string) answerRule {
+	return answerRule{status: http.StatusNotFound, reason: reason, message: message}
+}
+
+// The "no such object" 404 of each route the provider reads or deletes. Only
+// that answer means "gone", so a wrong path never drops an object from the state.
 var (
-	goneUser       = goneRule{reason: ReasonUserNotFound}
-	goneGroup      = goneRule{reason: ReasonGroupNotFound}
-	goneKey        = goneRule{message: GoneKeyMessage}
-	goneSecret     = goneRule{message: GoneSecretMessage}
-	goneTask       = goneRule{message: GoneTaskMessage}
-	goneDeployment = goneRule{message: GoneDeploymentMessage}
-	goneHook       = goneRule{message: GoneHookMessage}
+	goneUser       = goneAnswer(ReasonUserNotFound, "")
+	goneGroup      = goneAnswer(ReasonGroupNotFound, "")
+	goneKey        = goneAnswer(ReasonKeyNotFound, GoneKeyMessage)
+	goneSecret     = goneAnswer(ReasonSecretNotFound, GoneSecretMessage)
+	goneTask       = goneAnswer(ReasonTaskNotFound, GoneTaskMessage)
+	goneDeployment = goneAnswer(ReasonDeploymentNotFound, GoneDeploymentMessage)
+	goneHook       = goneAnswer(ReasonHookNotFound, GoneHookMessage)
 )
 
-// matches reports whether an error answer is this route's own 404. Pure.
-func (g goneRule) matches(e *APIError) bool {
-	if e.Status != http.StatusNotFound || !e.apiShaped {
+// taskSlugTaken is the refusal of a task create on the slug of a live task.
+var taskSlugTaken = answerRule{status: http.StatusConflict, reason: ReasonTaskSlugTaken, message: TaskSlugTakenMessage}
+
+// secretExists is the refusal of a create-only secret write on a name that exists.
+var secretExists = answerRule{status: http.StatusPreconditionFailed, reason: ReasonSecretExists}
+
+// matches reports whether an error answer is this rule's answer. Pure.
+func (g answerRule) matches(e *APIError) bool {
+	if g.status == 0 || e.Status != g.status || !e.apiShaped {
 		return false
 	}
-	switch {
-	case g.reason != "":
-		return e.Reason == g.reason
-	case g.message != "":
-		return e.Reason == "" && e.Message == g.message
-	default:
-		return false
-	}
+	byReason := g.reason != "" && e.Reason == g.reason
+	byOldText := g.message != "" && e.Reason == "" && e.Message == g.message
+	return byReason || byOldText
 }
 
 // parseAPIError builds the error of a non-2xx answer from its status and body,
 // and marks it gone when it is the route's own 404. A body that is not the JSON
 // error shape keeps the HTTP status text. Pure.
-func parseAPIError(method, path string, status int, body []byte, gone goneRule) *APIError {
+func parseAPIError(method, path string, status int, body []byte, gone answerRule) *APIError {
 	var parsed errorBody
 	shaped := json.Unmarshal(body, &parsed) == nil && parsed.Error != ""
 	message := parsed.Error
@@ -146,6 +168,12 @@ func IsOwnerRequired(err error) bool {
 // slug of a live task.
 func IsTaskSlugTaken(err error) bool {
 	apiErr := asAPIError(err)
-	return apiErr != nil && apiErr.apiShaped && apiErr.Status == http.StatusConflict &&
-		apiErr.Reason == "" && apiErr.Message == TaskSlugTakenMessage
+	return apiErr != nil && taskSlugTaken.matches(apiErr)
+}
+
+// IsSecretExists reports whether err is the refusal of a create-only secret
+// write on a name that already exists.
+func IsSecretExists(err error) bool {
+	apiErr := asAPIError(err)
+	return apiErr != nil && secretExists.matches(apiErr)
 }

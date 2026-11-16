@@ -151,32 +151,21 @@ func (w *walker) readFile(e fs.DirEntry, abs, rel string) {
 		w.errorf("%s: %v", rel, err)
 		return
 	}
-	f, err := openNoFollow(abs)
-	if errors.Is(err, fs.ErrNotExist) {
+	f, opened, err := openListed(abs, listed)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return
-	}
-	if errors.Is(err, errLink) {
+	case errors.Is(err, errLink):
 		w.out.Errors = append(w.out.Errors, symlinkRefusal(rel))
 		return
-	}
-	if err != nil {
+	case errors.Is(err, errNotRegular):
+		w.out.Errors = append(w.out.Errors, notRegularRefusal(rel))
+		return
+	case err != nil:
 		w.errorf("%s: %v", rel, err)
 		return
 	}
 	defer f.Close()
-	opened, err := f.Stat()
-	if err != nil {
-		w.errorf("%s: %v", rel, err)
-		return
-	}
-	if !os.SameFile(listed, opened) {
-		w.out.Errors = append(w.out.Errors, symlinkRefusal(rel))
-		return
-	}
-	if !opened.Mode().IsRegular() {
-		w.out.Errors = append(w.out.Errors, notRegularRefusal(rel))
-		return
-	}
 	// One byte past the bound is enough to know the bound is crossed, so the
 	// walk never holds more than MaxUploadBytes. The bound counts the archive:
 	// each member's header and padding too.

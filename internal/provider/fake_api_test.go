@@ -26,6 +26,7 @@ type recordedRequest struct {
 	idempotencyKey string
 	userAgent      string
 	contentType    string
+	ifNoneMatch    string
 	body           map[string]any
 }
 
@@ -51,6 +52,9 @@ type fakeAPI struct {
 	redactKeyCreates int
 	// vaultOff makes every secrets route answer 503 without Retry-After.
 	vaultOff bool
+	// secretReadMisses makes a secret read answer 404 for a name that exists,
+	// as when another writer creates it between a read and a write.
+	secretReadMisses bool
 	// failRevoke makes every key revoke answer 500.
 	failRevoke bool
 	// override, when set, answers every request instead of the routes (for
@@ -116,6 +120,7 @@ func (f *fakeAPI) handle(ownerOnly bool, fn func(w http.ResponseWriter, r *http.
 			idempotencyKey: r.Header.Get("Idempotency-Key"),
 			userAgent:      r.Header.Get("User-Agent"),
 			contentType:    r.Header.Get("Content-Type"),
+			ifNoneMatch:    r.Header.Get("If-None-Match"),
 			body:           body,
 		})
 		if f.override != nil {
@@ -302,13 +307,17 @@ func (f *fakeAPI) revokeKey(w http.ResponseWriter, r *http.Request, _ map[string
 
 const vaultOffMessage = "secret vault is not enabled on this platform"
 
-func (f *fakeAPI) setSecret(w http.ResponseWriter, _ *http.Request, body map[string]any) {
+func (f *fakeAPI) setSecret(w http.ResponseWriter, r *http.Request, body map[string]any) {
 	if f.vaultOff {
 		plainError(w, http.StatusServiceUnavailable, vaultOffMessage)
 		return
 	}
 	name, _ := body["name"].(string)
 	value, _ := body["value"].(string)
+	if _, exists := f.secrets[name]; exists && r.Header.Get("If-None-Match") == "*" {
+		refuse(w, http.StatusPreconditionFailed, client.ReasonSecretExists, "a secret with this name already exists")
+		return
+	}
 	f.values[name] = value
 	f.nextID++
 	f.secrets[name] = client.Secret{Name: name, UpdatedAt: fmt.Sprintf("2026-01-02T03:04:%02d.000Z", f.nextID%60)}
@@ -321,7 +330,7 @@ func (f *fakeAPI) getSecret(w http.ResponseWriter, r *http.Request, _ map[string
 		return
 	}
 	s, ok := f.secrets[r.PathValue("name")]
-	if !ok {
+	if !ok || f.secretReadMisses {
 		plainError(w, http.StatusNotFound, client.GoneSecretMessage)
 		return
 	}

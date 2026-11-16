@@ -150,6 +150,15 @@ func TestGoneOnlyForTheRoutesOwn404(t *testing.T) {
 		{"deployment, html page", `<html>Cannot GET</html>`, func(c *Client) error { return c.DeleteDeployment(context.Background(), "d") }, false},
 		{"hook, its text", `{"error":"not found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, true},
 		{"hook, with a reason", `{"error":"not found","reason":"user-not-found"}`, func(c *Client) error { return c.DeleteHook(context.Background(), "h") }, false},
+		// A newer server names each 404 with its own reason; the text may change.
+		{"key, new body", `{"error":"no such key","reason":"key-not-found"}`, func(c *Client) error { _, err := c.GetKey(context.Background(), "k"); return err }, true},
+		{"secret, new body", `{"error":"secret not found","reason":"secret-not-found"}`, func(c *Client) error { return c.DeleteSecret(context.Background(), "A") }, true},
+		{"task, new body", `{"error":"no such task","reason":"task-not-found"}`, func(c *Client) error { _, err := c.GetTask(context.Background(), "t"); return err }, true},
+		{"deployment, new body", `{"error":"deployment not found","reason":"deployment-not-found"}`, func(c *Client) error { return c.DeleteDeployment(context.Background(), "d") }, true},
+		{"hook, new body", `{"error":"no such hook","reason":"hook-not-found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, true},
+		{"hook, unknown route", `{"error":"no such route","reason":"route-not-found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, false},
+		{"task, another route's reason", `{"error":"no such hook","reason":"hook-not-found"}`, func(c *Client) error { return c.DeleteTask(context.Background(), "t") }, false},
+		{"secret, old text with the unknown-route reason", `{"error":"secret not found","reason":"route-not-found"}`, func(c *Client) error { _, err := c.GetSecret(context.Background(), "A"); return err }, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -221,6 +230,17 @@ func TestDecideRetry(t *testing.T) {
 		{"409 in progress on a repeat", attemptOutcome{attempt: 1, status: 409, idempotent: true, now: now}, retryDecision{retry: true, wait: 2 * time.Second}},
 		{"409 on the first try", attemptOutcome{status: 409, idempotent: true, now: now}, noRetry},
 		{"409 name taken", attemptOutcome{attempt: 1, status: 409, reason: ReasonNameTaken, idempotent: true, now: now}, noRetry},
+		{"429 rate-limited without header backs off", attemptOutcome{status: 429, reason: ReasonRateLimited, now: now}, retryDecision{retry: true, wait: time.Second}},
+		{"429 auth-throttled fails at once", attemptOutcome{status: 429, reason: ReasonAuthThrottled, now: now}, noRetry},
+		{"429 auth-throttled with header fails at once", attemptOutcome{status: 429, reason: ReasonAuthThrottled, retryAfter: "5", now: now}, noRetry},
+		{"429 rate-limited with header", attemptOutcome{status: 429, reason: ReasonRateLimited, retryAfter: "7", now: now}, retryDecision{retry: true, wait: 7 * time.Second}},
+		{"429 rate-limited long wait fails at once", attemptOutcome{status: 429, reason: ReasonRateLimited, retryAfter: "120", now: now}, retryDecision{refusedWait: 2 * time.Minute}},
+		{"409 in-progress code on the first try", attemptOutcome{status: 409, reason: ReasonIdempotencyInProgress, idempotent: true, now: now}, retryDecision{retry: true, wait: time.Second}},
+		{"409 in-progress code without a key", attemptOutcome{status: 409, reason: ReasonIdempotencyInProgress, now: now}, noRetry},
+		{"409 deployment race", attemptOutcome{status: 409, reason: ReasonDeploymentRace, idempotent: true, now: now}, retryDecision{retry: true, wait: time.Second}},
+		{"409 deployment race without a key", attemptOutcome{status: 409, reason: ReasonDeploymentRace, now: now}, noRetry},
+		{"409 deployment race, last try", attemptOutcome{attempt: maxAttempts - 1, status: 409, reason: ReasonDeploymentRace, idempotent: true, now: now}, noRetry},
+		{"409 task slug taken", attemptOutcome{attempt: 1, status: 409, reason: ReasonTaskSlugTaken, idempotent: true, now: now}, noRetry},
 		{"404", attemptOutcome{status: 404, now: now}, noRetry},
 		{"500", attemptOutcome{status: 500, now: now}, noRetry},
 	}
@@ -316,6 +336,127 @@ func TestLongRateWindowFailsAtOnceWithTheWait(t *testing.T) {
 	var apiErr *APIError
 	if !errors.As(err, &apiErr) || apiErr.Reason != "run-rate-quota" {
 		t.Fatalf("err does not wrap the API error: %v", err)
+	}
+	if calls != 1 || len(*waits) != 0 {
+		t.Fatalf("calls = %d, waits = %v, want one call and no wait", calls, *waits)
+	}
+}
+
+func TestTaskSlugTakenOldAndNewBodies(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   bool
+	}{
+		{"old text", http.StatusConflict, `{"error":"a task with this slug already exists for this tenant"}`, true},
+		{"new code", http.StatusConflict, `{"error":"slug in use","reason":"task-slug-taken"}`, true},
+		{"old text with another reason", http.StatusConflict, `{"error":"a task with this slug already exists for this tenant","reason":"name-taken"}`, false},
+		{"new code, wrong status", http.StatusBadRequest, `{"error":"slug in use","reason":"task-slug-taken"}`, false},
+		{"another conflict", http.StatusConflict, `{"error":"busy"}`, false},
+		{"not json", http.StatusConflict, `conflict`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			})
+			_, err := c.CreateTask(context.Background(), "report")
+			if err == nil || IsTaskSlugTaken(err) != tc.want {
+				t.Fatalf("err = %v, slug taken = %v, want %v", err, IsTaskSlugTaken(err), tc.want)
+			}
+		})
+	}
+}
+
+func TestRetryByReasonCode(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"rate-limited", http.StatusTooManyRequests, `{"error":"too many requests","reason":"rate-limited"}`},
+		{"idempotency-in-progress", http.StatusConflict, `{"error":"still being processed","reason":"idempotency-in-progress"}`},
+		{"deployment-race", http.StatusConflict, `{"error":"deployment vanished","reason":"deployment-race"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			c, waits := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				calls++
+				if calls == 1 {
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+					return
+				}
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"name":"A","stored":true}`))
+			})
+			if err := c.SetSecret(context.Background(), "A", "fake-v"); err != nil {
+				t.Fatal(err)
+			}
+			if calls != 2 || len(*waits) != 1 || (*waits)[0] != backoffBase {
+				t.Fatalf("calls = %d, waits = %v", calls, *waits)
+			}
+		})
+	}
+}
+
+func TestCreateSecretIsCreateOnly(t *testing.T) {
+	var got []string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("If-None-Match"))
+		if len(got) == 1 {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"name":"A","stored":true}`))
+			return
+		}
+		w.WriteHeader(http.StatusPreconditionFailed)
+		_, _ = w.Write([]byte(`{"error":"a secret with this name already exists","reason":"secret-exists"}`))
+	})
+	if err := c.SetSecret(context.Background(), "A", "fake-v"); err != nil {
+		t.Fatal(err)
+	}
+	err := c.CreateSecret(context.Background(), "A", "fake-v")
+	if !IsSecretExists(err) {
+		t.Fatalf("err = %v, want the secret-exists refusal", err)
+	}
+	if len(got) != 2 || got[0] != "" || got[1] != "*" {
+		t.Fatalf("If-None-Match = %q, want none on a replace and * on a create", got)
+	}
+}
+
+func TestIsSecretExistsNeedsItsStatusAndReason(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+	}{
+		{http.StatusConflict, `{"error":"exists","reason":"secret-exists"}`},
+		{http.StatusPreconditionFailed, `{"error":"precondition failed"}`},
+		{http.StatusPreconditionFailed, `not json`},
+	} {
+		c, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
+		})
+		if err := c.CreateSecret(context.Background(), "A", "fake-v"); err == nil || IsSecretExists(err) {
+			t.Errorf("%d %s: err = %v, want an error that is not secret-exists", tc.status, tc.body, err)
+		}
+	}
+}
+
+func TestAuthThrottledFailsAtOnceAsAnAuthFailure(t *testing.T) {
+	calls := 0
+	c, waits := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "5")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":"too many failed attempts","reason":"auth-throttled"}`))
+	})
+	_, err := c.GetKey(context.Background(), "key_1")
+	if err == nil || !strings.Contains(err.Error(), "check api_key") || !HasReason(err, ReasonAuthThrottled) {
+		t.Fatalf("err = %v", err)
 	}
 	if calls != 1 || len(*waits) != 0 {
 		t.Fatalf("calls = %d, waits = %v, want one call and no wait", calls, *waits)

@@ -82,38 +82,42 @@ func refusedSelection(errs ...string) Selection {
 }
 
 // readConfig finds the root task config (the first name present) and reads
-// it when it is a regular file. A config that is a link is refused later by
-// the walk; its text is not read here.
+// it when it is a regular file. A config that is a link or not a regular file
+// is refused later by the walk; its text is not read here.
 func readConfig(dir string) (string, []byte, error) {
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		return "", nil, fmt.Errorf("Task directory does not exist: %s", dir)
 	}
 	for _, name := range ConfigFileNames {
-		path := filepath.Join(dir, name)
-		info, err := os.Lstat(path)
-		if errors.Is(err, fs.ErrNotExist) {
+		text, err := readRegularFile(filepath.Join(dir, name))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
 			continue
-		}
-		if err != nil {
-			return "", nil, err
-		}
-		if !info.Mode().IsRegular() {
+		case errors.Is(err, errLink), errors.Is(err, errNotRegular):
 			return name, nil, nil
+		default:
+			return name, text, err
 		}
-		text, err := os.ReadFile(path)
-		return name, text, err
 	}
 	return "", nil, fmt.Errorf("the task directory has no task config (%s)", strings.Join(ConfigFileNames, ", "))
 }
 
-// readIgnoreRules reads the ignore file in the task root; no file means no rules.
+// readIgnoreRules reads the ignore file in the task root; no file means no
+// rules. The walk never uploads the ignore file, so a link or a special file
+// in its place is refused here.
 func readIgnoreRules(dir string, protected []string) ([]IgnoreRule, []string) {
-	text, err := os.ReadFile(filepath.Join(dir, IgnoreFile))
-	if errors.Is(err, fs.ErrNotExist) {
+	text, err := readRegularFile(filepath.Join(dir, IgnoreFile))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, nil
-	}
-	if err != nil {
+	case errors.Is(err, errLink), errors.Is(err, errNotRegular):
+		return nil, []string{ignoreFileRefusal()}
+	case err != nil:
 		return nil, []string{fmt.Sprintf("%s: %v", IgnoreFile, err)}
 	}
 	return ParseIgnoreFile(string(text), IgnoreFile, protected)
+}
+
+func ignoreFileRefusal() string {
+	return IgnoreFile + ": must be a regular file in the task directory, not a link or a special file"
 }

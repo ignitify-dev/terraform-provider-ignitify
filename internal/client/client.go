@@ -17,12 +17,16 @@ import (
 )
 
 const (
-	headerAuthorization   = "Authorization"
-	headerUserAgent       = "User-Agent"
-	headerContentType     = "Content-Type"
-	headerAccept          = "Accept"
-	headerIdempotencyKey  = "Idempotency-Key"
-	headerRetryAfter      = "Retry-After"
+	headerAuthorization  = "Authorization"
+	headerUserAgent      = "User-Agent"
+	headerContentType    = "Content-Type"
+	headerAccept         = "Accept"
+	headerIdempotencyKey = "Idempotency-Key"
+	headerRetryAfter     = "Retry-After"
+	headerIfNoneMatch    = "If-None-Match"
+	// anyEntity in If-None-Match makes a write create-only: the server refuses
+	// it (412) when the object already exists.
+	anyEntity             = "*"
 	bearerPrefix          = "Bearer "
 	contentTypeJSON       = "application/json"
 	idempotencyKeyPrefix  = "tf-"
@@ -116,7 +120,10 @@ type request struct {
 	// out receives the decoded 2xx answer; nil ignores the body.
 	out any
 	// gone is the route's "no such object" 404; the zero rule for routes with none.
-	gone goneRule
+	gone answerRule
+	// createOnly sends If-None-Match: *, so the write never replaces an
+	// existing object. A server that does not know the header ignores it.
+	createOnly bool
 }
 
 // do sends one API call. A write (any method but GET) carries one
@@ -138,7 +145,7 @@ func (c *Client) do(ctx context.Context, r request) error {
 		}
 	}
 	for attempt := 0; ; attempt++ {
-		status, header, body, sendErr := c.send(ctx, tryInput{method: r.method, path: r.path, payload: payload, contentType: contentType, idemKey: idemKey, timeout: timeout})
+		status, header, body, sendErr := c.send(ctx, tryInput{method: r.method, path: r.path, payload: payload, contentType: contentType, idemKey: idemKey, createOnly: r.createOnly, timeout: timeout})
 		if sendErr == nil && status >= 200 && status < 300 {
 			return decodeBody(r.method, r.path, body, r.out)
 		}
@@ -161,6 +168,9 @@ func (c *Client) do(ctx context.Context, r request) error {
 		if !decision.retry {
 			if sendErr != nil {
 				return fmt.Errorf("%s %s: %w", r.method, r.path, sendErr)
+			}
+			if apiErr != nil && apiErr.Reason == ReasonAuthThrottled {
+				return fmt.Errorf("the API refused the key too often; check api_key: %w", apiErr)
 			}
 			if decision.refusedWait > 0 && apiErr != nil {
 				return fmt.Errorf("rate limit: retry after %d s: %w", int64(decision.refusedWait/time.Second), apiErr)
@@ -213,6 +223,7 @@ type tryInput struct {
 	payload     []byte
 	contentType string
 	idemKey     string
+	createOnly  bool
 	timeout     time.Duration
 }
 
@@ -238,6 +249,9 @@ func (c *Client) send(ctx context.Context, in tryInput) (int, http.Header, []byt
 	}
 	if in.idemKey != "" {
 		req.Header.Set(headerIdempotencyKey, in.idemKey)
+	}
+	if in.createOnly {
+		req.Header.Set(headerIfNoneMatch, anyEntity)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

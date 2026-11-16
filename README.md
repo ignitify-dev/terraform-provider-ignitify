@@ -90,7 +90,8 @@ With a user key, an access resource fails with "owner key required".
 - **Deployments.** `source_dir` is a task folder. At plan time the provider
   selects its files as the CLI does (no `.env` files, `node_modules`, `.git`,
   virtualenvs, tool caches, root `target` or `dist`; not the paths
-  `.ignitifyignore` leaves out), refuses a symlink, a registry credential in
+  `.ignitifyignore` leaves out), refuses a symlink (also as the task config or
+  `.ignitifyignore`), a registry credential in
   `.npmrc` or `.yarnrc.yml`, a path the server refuses (a backslash, a tab or
   a newline in a name), a missing lockfile or entry file, and a folder above
   the upload size; it warns about excluded files and private-key names, and
@@ -169,6 +170,7 @@ and set `filesystem_mirror { path = "<mirror>" }` in the same file.
 | `make build` | Build the provider binary for this machine into `bin/`. |
 | `make test` | Unit tests against an in-memory fake API. No network, no Terraform binary. |
 | `make test-tofu` | Real OpenTofu plans and applies against the in-memory fake API (create, empty plan after apply, replace, drift, a 404 removing an object). No network. |
+| `make test-terraform` | The same plans and applies, run by a pinned Terraform binary (a test tool only; it is not shipped). No network. |
 | `make lint` | `go vet` and a `gofmt` check. |
 | `make tidy` | `go mod tidy`. |
 | `make testacc` | Acceptance tests with OpenTofu against a real tenant. Needs `IGNITIFY_API_URL` and `IGNITIFY_API_KEY` (an owner key). They create objects with random names and destroy them. The deployment test builds twice and needs a tier with webhooks and two free deployment slots. |

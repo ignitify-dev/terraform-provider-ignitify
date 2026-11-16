@@ -47,12 +47,18 @@ func TestSecretLifecycle(t *testing.T) {
 	if fake.allRequests()[1].idempotencyKey == "" {
 		t.Fatal("secret write sent no Idempotency-Key")
 	}
+	if fake.allRequests()[1].ifNoneMatch != "*" {
+		t.Fatal("the create write must be create-only (If-None-Match: *)")
+	}
 
 	// A new version sends the value from the configuration again.
 	updated, diags := h.update(state, secretConfig("DB_PASSWORD", "fake-rotated", 2))
 	mustOK(t, diags)
 	if fake.values["DB_PASSWORD"] != "fake-rotated" {
 		t.Fatal("update did not send the new value")
+	}
+	if write := fake.allRequests()[3]; write.method != "POST" || write.ifNoneMatch != "" {
+		t.Fatalf("an update write replaces the value and must not be create-only: %+v", write)
 	}
 	if stateHolds(updated.Raw, "fake-rotated") {
 		t.Fatal("the value must never be in the state")
@@ -124,5 +130,23 @@ func TestSecretWrong404IsAnError(t *testing.T) {
 	mustFail(t, diags, "HTTP 404")
 	if _, ok := fake.values["OTHER"]; ok {
 		t.Fatal("no write after a foreign 404")
+	}
+}
+
+// TestSecretCreateRaceIsRefused covers a secret created by another writer
+// between the read before the create and the write: the create-only write is
+// refused and the value is kept.
+func TestSecretCreateRaceIsRefused(t *testing.T) {
+	fake, c := newFakeAPI(t)
+	if err := c.SetSecret(t.Context(), "API_TOKEN", "fake-old"); err != nil {
+		t.Fatal(err)
+	}
+	fake.secretReadMisses = true
+	h := newHarness(t, newSecretResource, c)
+	_, diags := h.create(secretConfig("API_TOKEN", "fake-new", 1))
+	mustFail(t, diags, "already exists")
+	mustFail(t, diags, "Import it")
+	if fake.values["API_TOKEN"] != "fake-old" {
+		t.Fatal("an existing secret must not be overwritten")
 	}
 }

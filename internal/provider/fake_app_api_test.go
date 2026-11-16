@@ -426,3 +426,10 @@ func (f *fakeAPI) liveDeployments() []fakeDeployment {
 	}
 	return out
 }
+
+// setRefuseNotify switches the notify refusal while the fake serves requests.
+func (f *fakeAPI) setRefuseNotify(on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.app.refuseNotify = on
+}

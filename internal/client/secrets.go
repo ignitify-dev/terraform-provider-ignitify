@@ -12,6 +12,13 @@ func (c *Client) SetSecret(ctx context.Context, name, value string) error {
 	return c.do(ctx, request{method: http.MethodPost, path: pathSecrets, body: secretSetRequest{Name: name, Value: value}})
 }
 
+// CreateSecret stores a secret value only when the name does not exist yet;
+// IsSecretExists reports the refusal. A server that does not know the
+// create-only header stores the value as SetSecret does.
+func (c *Client) CreateSecret(ctx context.Context, name, value string) error {
+	return c.do(ctx, request{method: http.MethodPost, path: pathSecrets, body: secretSetRequest{Name: name, Value: value}, createOnly: true})
+}
+
 // GetSecret reads a secret's name and last write time; never the value.
 func (c *Client) GetSecret(ctx context.Context, name string) (Secret, error) {
 	var out Secret
