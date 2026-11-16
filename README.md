@@ -195,8 +195,7 @@ are the two full root modules described above.
 ## Security
 
 Do not report a security issue in a public issue or pull request. Report it
-privately by email to the project's security contact; the address is added
-here before the first public release.
+privately by email to admin@ignitify.dev.
 
 ## Contributing
 
@@ -208,6 +207,8 @@ licence agreement: a contribution comes in under MPL-2.0 and you keep the
 copyright of your code. The issue tracker opens with v0.3.
 
 ## Licence
+
+Copyright 2026 Ignitify and contributors.
 
 Mozilla Public License 2.0, see `LICENSE`. Each release zip also carries
 `THIRD_PARTY_NOTICES`, the licences of the Go modules built into the binary.
