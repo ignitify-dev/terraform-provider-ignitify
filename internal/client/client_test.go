@@ -4,8 +4,10 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -141,6 +143,12 @@ func TestGoneOnlyForTheRoutesOwn404(t *testing.T) {
 		{"key, html page", `not json`, func(c *Client) error { _, err := c.GetKey(context.Background(), "k"); return err }, false},
 		{"secret, its text", `{"error":"secret not found"}`, func(c *Client) error { return c.DeleteSecret(context.Background(), "A") }, true},
 		{"secret, with a reason", `{"error":"secret not found","reason":"user-not-found"}`, func(c *Client) error { _, err := c.GetSecret(context.Background(), "A"); return err }, false},
+		{"task, its text", `{"error":"task not found or does not belong to this tenant"}`, func(c *Client) error { _, err := c.GetTask(context.Background(), "t"); return err }, true},
+		{"task, generic json", `{"error":"not found"}`, func(c *Client) error { return c.DeleteTask(context.Background(), "t") }, false},
+		{"deployment, its text", `{"error":"deployment not found"}`, func(c *Client) error { _, err := c.GetDeployment(context.Background(), "d"); return err }, true},
+		{"deployment, html page", `<html>Cannot GET</html>`, func(c *Client) error { return c.DeleteDeployment(context.Background(), "d") }, false},
+		{"hook, its text", `{"error":"not found"}`, func(c *Client) error { _, err := c.GetHook(context.Background(), "h"); return err }, true},
+		{"hook, with a reason", `{"error":"not found","reason":"user-not-found"}`, func(c *Client) error { return c.DeleteHook(context.Background(), "h") }, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -252,5 +260,34 @@ func TestFillPath(t *testing.T) {
 		if _, err := fillPath(pathUserByName, bad); err == nil {
 			t.Errorf("%q: want a refusal", bad)
 		}
+	}
+}
+
+func TestListTaskDeploymentsReadsEveryPage(t *testing.T) {
+	const total = 2*deploymentPageSize + 5
+	var queries []string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		start := 0
+		if after := r.URL.Query().Get("after_id"); after != "" {
+			start, _ = strconv.Atoi(strings.TrimPrefix(after, "dep-"))
+			start++
+		}
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		var rows []string
+		for i := start; i < total && len(rows) < limit; i++ {
+			rows = append(rows, fmt.Sprintf(`{"id":"dep-%d","status":"READY"}`, i))
+		}
+		_, _ = w.Write([]byte(`{"deployments":[` + strings.Join(rows, ",") + `]}`))
+	})
+	got, err := c.ListTaskDeployments(context.Background(), "report")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != total || got[0].ID != "dep-0" || got[total-1].ID != fmt.Sprintf("dep-%d", total-1) {
+		t.Fatalf("got %d rows", len(got))
+	}
+	if len(queries) != 3 || !strings.Contains(queries[1], "after_id=dep-99") || !strings.Contains(queries[0], "task_id=report") {
+		t.Fatalf("queries = %v", queries)
 	}
 }

@@ -1,0 +1,12 @@
+schema_version: 1
+slug: tfacc-task
+runtime: python
+execution:
+  cardinality: one
+  duration: short
+  state: independent
+  interaction: boundary-only
+  storage_mib: 25
+  residency: auto
+  network:
+    type: none

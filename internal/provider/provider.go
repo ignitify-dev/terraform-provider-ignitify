@@ -48,11 +48,11 @@ func (p *ignitifyProvider) Metadata(_ context.Context, _ provider.MetadataReques
 
 func (p *ignitifyProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manage an existing Ignitify tenant: users, groups, API keys and secrets.",
+		Description: "Manage an existing Ignitify tenant: users, groups, API keys, secrets, tasks, deployments and hooks.",
 		Attributes: map[string]schema.Attribute{
 			"api_key": schema.StringAttribute{
 				Description: "The API key. Defaults to the " + envAPIKey + " environment variable. " +
-					"Users, groups and keys need an owner key; secrets work with a user key that holds the secrets permissions.",
+					"Users, groups and keys need an owner key; secrets, tasks, deployments and hooks work with a user key that holds their permissions.",
 				Optional:  true,
 				Sensitive: true,
 			},
@@ -97,6 +97,9 @@ func (p *ignitifyProvider) Resources(_ context.Context) []func() resource.Resour
 		newGroupResource,
 		newAPIKeyResource,
 		newSecretResource,
+		newTaskResource,
+		newDeploymentResource,
+		newHookResource,
 	}
 }
 

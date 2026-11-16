@@ -9,7 +9,7 @@ TESTACC_IMAGE := terraform-provider-ignitify-testacc:local
 CACHE_VOLUME := terraform-provider-ignitify-gocache
 
 BINARY  := terraform-provider-ignitify
-VERSION ?= 0.1.0-dev
+VERSION ?= 0.2.0-dev
 
 # The binary is built for the machine that runs Terraform, not for the container.
 HOST_OS   := $(shell uname -s | tr '[:upper:]' '[:lower:]')
@@ -23,7 +23,7 @@ DOCKER_RUN = docker run --rm \
 	-e GOMODCACHE=/cache/mod -e GOCACHE=/cache/build \
 	-e GOFLAGS=-buildvcs=false -e CGO_ENABLED=0
 
-.PHONY: build test test-tofu lint tidy testacc testacc-image clean
+.PHONY: build test test-tofu lint tidy testacc testacc-image check-cases clean
 
 build:
 	$(DOCKER_RUN) -e GOOS=$(GOOS) -e GOARCH=$(GOARCH) $(GO_IMAGE) \
@@ -59,6 +59,24 @@ testacc: testacc-image
 	$(DOCKER_RUN) $(TOFU_ENV) -e TF_ACC=1 \
 		-e IGNITIFY_API_URL -e IGNITIFY_API_KEY \
 		$(TESTACC_IMAGE) go test -count=1 -v -timeout 30m -run '^TestAcc' ./internal/provider/...
+
+# The shared selection cases are a copy of the platform's file and must equal
+# it byte for byte. PLATFORM_DIR is a checkout of the platform source; without
+# it the check is skipped.
+CASES_FILE     := internal/source/testdata/cases.json
+PLATFORM_CASES := contracts/source-selection/golden/cases.json
+
+check-cases:
+	@if [ -z "$(PLATFORM_DIR)" ] || [ ! -f "$(PLATFORM_DIR)/$(PLATFORM_CASES)" ]; then \
+		echo "check-cases: skipped: set PLATFORM_DIR to the platform source checkout that holds $(PLATFORM_CASES)"; \
+	else \
+		docker run --rm -v "$(CURDIR)":/src:ro -v "$(abspath $(PLATFORM_DIR))":/platform:ro -w /src $(GO_IMAGE) sh -c '\
+			here=$$(sha256sum $(CASES_FILE) | cut -d" " -f1); \
+			there=$$(sha256sum /platform/$(PLATFORM_CASES) | cut -d" " -f1); \
+			echo "provider copy: $$here"; echo "platform file: $$there"; \
+			if [ "$$here" != "$$there" ]; then echo "check-cases: FAILED: copy the platform file unchanged"; exit 1; fi; \
+			echo "check-cases: ok"'; \
+	fi
 
 clean:
 	rm -rf bin

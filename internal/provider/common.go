@@ -12,6 +12,10 @@ import (
 	"github.com/ignitify-dev/terraform-provider-ignitify/internal/client"
 )
 
+// importIDSeparator splits an import id made of a task slug and a server id:
+// `<task slug>/<id>`.
+const importIDSeparator = "/"
+
 // clientFrom takes the API client the provider passed to a resource or data
 // source. Nil data means the provider is not configured yet (validation), and
 // is not an error.

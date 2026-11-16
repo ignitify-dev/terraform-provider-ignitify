@@ -30,6 +30,12 @@ var secretNamePattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,63}$`)
 
 const secretNameRule = "1 to 64 upper case letters, digits and '_', starting with a letter"
 
+// taskSlugPattern is the task slug rule: 1 to 63 lower case letters, digits
+// and '-', starting and ending with a letter or digit.
+var taskSlugPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+
+const taskSlugRule = "1 to 63 lower case letters, digits and '-', starting and ending with a letter or digit"
+
 // permissionCatalogue is the fixed list of permissions a group may grant.
 var permissionCatalogue = []string{
 	"tasks.read",
@@ -59,4 +65,8 @@ func secretNameValidator() validator.String {
 
 func permissionValidator() validator.String {
 	return stringvalidator.OneOf(permissionCatalogue...)
+}
+
+func taskSlugValidator() validator.String {
+	return stringvalidator.RegexMatches(taskSlugPattern, "must be "+taskSlugRule)
 }

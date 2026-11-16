@@ -8,19 +8,27 @@ import (
 )
 
 // The tenant API paths this provider calls. A path parameter is a user or group
-// name, a key id or a secret name.
+// name, a key id, a secret name, a task slug, a deployment id or a hook id.
 const (
-	pathWhoami          = "/whoami"
-	pathUsers           = "/users"
-	pathUserByName      = "/users/%s"
-	pathGroups          = "/groups"
-	pathGroupByName     = "/groups/%s"
-	pathGroupPermission = "/groups/%s/permissions/%s"
-	pathGroupUser       = "/groups/%s/users/%s"
-	pathKeys            = "/keys"
-	pathKeyByID         = "/keys/%s"
-	pathSecrets         = "/secrets"
-	pathSecretByName    = "/secrets/%s"
+	pathWhoami           = "/whoami"
+	pathUsers            = "/users"
+	pathUserByName       = "/users/%s"
+	pathGroups           = "/groups"
+	pathGroupByName      = "/groups/%s"
+	pathGroupPermission  = "/groups/%s/permissions/%s"
+	pathGroupUser        = "/groups/%s/users/%s"
+	pathKeys             = "/keys"
+	pathKeyByID          = "/keys/%s"
+	pathSecrets          = "/secrets"
+	pathSecretByName     = "/secrets/%s"
+	pathTasks            = "/tasks"
+	pathTaskByRef        = "/tasks/%s"
+	pathTaskHooks        = "/tasks/%s/hooks"
+	pathHookByID         = "/hooks/%s"
+	pathHookTrigger      = "/hooks/trigger/%s"
+	pathDeployments      = "/deployments"
+	pathDeploymentByID   = "/deployments/%s"
+	pathDeploymentNotify = "/deployments/%s/notify"
 )
 
 // fillPath renders a path pattern with its parameters. Each parameter is

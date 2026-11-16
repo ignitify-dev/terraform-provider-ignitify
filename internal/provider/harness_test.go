@@ -85,12 +85,25 @@ func (h *harness) emptyState() tfsdk.State {
 	return tfsdk.State{Schema: h.schema, Raw: tftypes.NewValue(h.typ, nil)}
 }
 
-func (h *harness) create(config map[string]tftypes.Value) (tfsdk.State, diag.Diagnostics) {
-	req := resource.CreateRequest{
-		Config: tfsdk.Config{Schema: h.schema, Raw: h.object(config, false)},
-		Plan:   tfsdk.Plan{Schema: h.schema, Raw: h.planned(config)},
+// modifyPlan runs the resource's plan modifier, when it has one, as a plan does.
+func (h *harness) modifyPlan(cfg tfsdk.Config, plan tfsdk.Plan, prior tfsdk.State) (tfsdk.Plan, diag.Diagnostics) {
+	modifier, ok := h.res.(resource.ResourceWithModifyPlan)
+	if !ok {
+		return plan, nil
 	}
-	resp := resource.CreateResponse{State: h.emptyState()}
+	resp := resource.ModifyPlanResponse{Plan: plan}
+	modifier.ModifyPlan(h.ctx, resource.ModifyPlanRequest{Config: cfg, Plan: plan, State: prior}, &resp)
+	return resp.Plan, resp.Diagnostics
+}
+
+func (h *harness) create(config map[string]tftypes.Value) (tfsdk.State, diag.Diagnostics) {
+	cfg := tfsdk.Config{Schema: h.schema, Raw: h.object(config, false)}
+	plan, diags := h.modifyPlan(cfg, tfsdk.Plan{Schema: h.schema, Raw: h.planned(config)}, h.emptyState())
+	if diags.HasError() {
+		return h.emptyState(), diags
+	}
+	req := resource.CreateRequest{Config: cfg, Plan: plan}
+	resp := resource.CreateResponse{State: h.emptyState(), Diagnostics: diags}
 	h.res.Create(h.ctx, req, &resp)
 	return resp.State, resp.Diagnostics
 }
@@ -101,9 +114,10 @@ func (h *harness) read(state tfsdk.State) (tfsdk.State, diag.Diagnostics) {
 	return resp.State, resp.Diagnostics
 }
 
-// update applies a new configuration to a prior state. Computed values the
-// configuration does not set keep their prior value, as UseStateForUnknown does.
-func (h *harness) update(prior tfsdk.State, config map[string]tftypes.Value) (tfsdk.State, diag.Diagnostics) {
+// planUpdate plans a new configuration over a prior state. Computed values
+// the configuration does not set keep their prior value, as
+// UseStateForUnknown does; then the resource's plan modifier runs.
+func (h *harness) planUpdate(prior tfsdk.State, config map[string]tftypes.Value) (tfsdk.Config, tfsdk.Plan, diag.Diagnostics) {
 	priorAttrs := map[string]tftypes.Value{}
 	if err := prior.Raw.As(&priorAttrs); err != nil {
 		h.t.Fatalf("prior state: %v", err)
@@ -119,13 +133,19 @@ func (h *harness) update(prior tfsdk.State, config map[string]tftypes.Value) (tf
 			values[name] = v
 		}
 	}
-	plan := h.object(values, true)
-	req := resource.UpdateRequest{
-		Config: tfsdk.Config{Schema: h.schema, Raw: h.object(config, false)},
-		Plan:   tfsdk.Plan{Schema: h.schema, Raw: plan},
-		State:  prior,
+	cfg := tfsdk.Config{Schema: h.schema, Raw: h.object(config, false)}
+	plan, diags := h.modifyPlan(cfg, tfsdk.Plan{Schema: h.schema, Raw: h.object(values, true)}, prior)
+	return cfg, plan, diags
+}
+
+// update applies a new configuration to a prior state.
+func (h *harness) update(prior tfsdk.State, config map[string]tftypes.Value) (tfsdk.State, diag.Diagnostics) {
+	cfg, plan, diags := h.planUpdate(prior, config)
+	if diags.HasError() {
+		return prior, diags
 	}
-	resp := resource.UpdateResponse{State: tfsdk.State{Schema: h.schema, Raw: plan}}
+	req := resource.UpdateRequest{Config: cfg, Plan: plan, State: prior}
+	resp := resource.UpdateResponse{State: tfsdk.State{Schema: h.schema, Raw: plan.Raw}, Diagnostics: diags}
 	h.res.Update(h.ctx, req, &resp)
 	return resp.State, resp.Diagnostics
 }

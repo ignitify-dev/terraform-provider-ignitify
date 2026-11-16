@@ -2,6 +2,8 @@
 
 package client
 
+import "encoding/json"
+
 // The JSON bodies of the tenant API routes this provider calls. Timestamps are
 // ISO 8601 strings. Only the fields the provider reads are declared; the server
 // may send more.
@@ -58,6 +60,13 @@ type Whoami struct {
 	Limits     WhoamiLimits  `json:"limits"`
 	Usage      WhoamiUsage   `json:"usage"`
 	Access     *WhoamiAccess `json:"access"`
+	Policy     WhoamiPolicy  `json:"policy"`
+}
+
+// WhoamiPolicy holds the entitlement flags the provider checks before a
+// write. A nil flag is one the server did not answer.
+type WhoamiPolicy struct {
+	MayUseWebhooks *bool `json:"may_use_webhooks"`
 }
 
 // WhoamiTier names the tenant's tier.
@@ -96,6 +105,76 @@ type WhoamiAccess struct {
 	Permissions []string `json:"permissions"`
 }
 
+// Task is one live task.
+type Task struct {
+	ID         string `json:"id"`
+	ResourceID string `json:"resource_id"`
+	Slug       string `json:"slug"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// TaskCreated is the answer of a task create. Revived is true when the slug
+// was a task this tenant deleted and that same task is back.
+type TaskCreated struct {
+	TaskID     string `json:"task_id"`
+	ResourceID string `json:"resource_id"`
+	Revived    bool   `json:"revived"`
+}
+
+// Deployment is one live deployment as a read shows it. Execution is the
+// declared `execution` block as stored (JSON `null` when none); Secrets are the
+// declared secret names, never values.
+type Deployment struct {
+	ID            string          `json:"id"`
+	ResourceID    string          `json:"resource_id"`
+	TaskID        string          `json:"task_id"`
+	TaskSlug      string          `json:"task_slug"`
+	ContentHash   string          `json:"content_hash"`
+	Status        string          `json:"status"`
+	Secrets       []string        `json:"secrets"`
+	Execution     json.RawMessage `json:"execution"`
+	FailureReason *string         `json:"failure_reason"`
+	NotifyURL     *string         `json:"notify_url"`
+	CreatedAt     string          `json:"created_at"`
+}
+
+// The deployment statuses.
+const (
+	DeploymentBuilding = "BUILDING"
+	DeploymentReady    = "READY"
+	DeploymentFailed   = "FAILED"
+)
+
+// DeploymentCreated is the answer of a deploy: 202 when a build was queued,
+// 200 with Reused when the same content is already READY or building.
+type DeploymentCreated struct {
+	DeploymentID string `json:"deployment_id"`
+	Status       string `json:"status"`
+	Reused       bool   `json:"reused"`
+}
+
+type deploymentList struct {
+	Deployments []Deployment `json:"deployments"`
+}
+
+// HookCreated is the answer of a hook create. Secret is shown once; a replay
+// of the same idempotent request answers Secret nil and SecretRedacted true.
+type HookCreated struct {
+	ResourceID     string  `json:"resource_id"`
+	HookID         string  `json:"hook_id"`
+	Secret         *string `json:"secret"`
+	SecretRedacted bool    `json:"secret_redacted"`
+}
+
+// Hook is one live hook as a read shows it; never the secret. TaskID is the
+// task's server id.
+type Hook struct {
+	TaskID     string `json:"task_id"`
+	ResourceID string `json:"resource_id"`
+	HookID     string `json:"hook_id"`
+	CreatedAt  string `json:"created_at"`
+}
+
 // The request bodies.
 
 type userCreateRequest struct {
@@ -115,4 +194,14 @@ type keyCreateRequest struct {
 type secretSetRequest struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+type taskCreateRequest struct {
+	Slug string `json:"slug"`
+}
+
+// notifyRequest sets a notify target (URL and secret) or clears it (URL nil).
+type notifyRequest struct {
+	URL    *string `json:"url"`
+	Secret string  `json:"secret,omitempty"`
 }

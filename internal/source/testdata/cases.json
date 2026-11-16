@@ -1,0 +1,305 @@
+{
+  "version": 1,
+  "contract": "contracts/source-selection/1",
+  "consumed_by": [
+    "the platform tests for exclude, credential and private_key_warning",
+    "the CLI tests for ignore_protected_paths, ignore_match and ignore_refusal",
+    "the CLI tests for runtime_lockfiles, lockfile and trees",
+    "the Terraform provider's Go tests (every section)"
+  ],
+  "scope": "which files of a task folder a source upload carries, and which it refuses. The tar bytes, the content key and the YAML parse are NOT here: the server derives those from the archive.",
+  "runtime_lockfiles": {
+    "node": "package-lock.json",
+    "python": "requirements.txt",
+    "go": "go.sum",
+    "rust": "Cargo.lock"
+  },
+  "exclude": [
+    { "path": "node_modules/x/index.js", "excluded": true, "reason_contains": "inside excluded directory \"node_modules\"" },
+    { "path": "pkg/node_modules/x.js", "excluded": true, "reason_contains": "inside excluded directory \"node_modules\"" },
+    { "path": "node_modules/pkg/dist/index.js", "excluded": true, "reason_contains": "inside excluded directory \"node_modules\"" },
+    { "path": "web/node_modules/x/dist/app.js", "excluded": true, "reason_contains": "inside excluded directory \"node_modules\"" },
+    { "path": ".git/HEAD", "excluded": true, "reason_contains": "inside excluded directory \".git\"" },
+    { "path": ".ignitify/state.json", "excluded": true, "reason_contains": "inside excluded directory \".ignitify\"" },
+    { "path": "pkg/venv/bin/python", "excluded": true, "reason_contains": "inside excluded directory \"venv\"" },
+    { "path": ".venv/bin/python", "excluded": true, "reason_contains": "inside excluded directory \".venv\"" },
+    { "path": "a/b/__pycache__/m.pyc", "excluded": true, "reason_contains": "inside excluded directory \"__pycache__\"" },
+    { "path": "lib/__pycache__/m.pyc", "excluded": true, "reason_contains": "inside excluded directory \"__pycache__\"" },
+    { "path": ".mypy_cache/x", "excluded": true, "reason_contains": "inside excluded directory \".mypy_cache\"" },
+    { "path": ".pytest_cache/x", "excluded": true, "reason_contains": "inside excluded directory \".pytest_cache\"" },
+    { "path": "target/release/app", "excluded": true, "reason_contains": "inside excluded directory \"target\" (build output at the task root)" },
+    { "path": "dist/bundle.js", "excluded": true, "reason_contains": "inside excluded directory \"dist\" (build output at the task root)" },
+    { "path": "dist", "excluded": true, "reason_contains": "excluded directory \"dist\"", "note": "a tar directory member without a slash" },
+    { "path": "dist/", "excluded": true, "reason_contains": "excluded directory \"dist\"", "note": "a tar directory member with a slash" },
+    { "path": ".env", "excluded": true, "reason_contains": "secret:set" },
+    { "path": ".env.local", "excluded": true, "reason_contains": "secret:set" },
+    { "path": "sub/.env.production", "excluded": true, "reason_contains": "secret:set" },
+    { "path": "config/.env.production", "excluded": true, "reason_contains": "\".env.production\" may hold secrets" },
+    { "path": "internal/dist/dist.go", "excluded": false, "note": "a Go package named dist is source below the root" },
+    { "path": "src/target/mod.rs", "excluded": false, "note": "a Rust module dir named target" },
+    { "path": "mypkg/dist/__init__.py", "excluded": false, "note": "a Python package named dist" },
+    { "path": "pkg/dist", "excluded": false },
+    { "path": "pkg/dist/", "excluded": false },
+    { "path": "crates/a/target/debug/a", "excluded": false },
+    { "path": "distribution/x.ts", "excluded": false, "note": "near-miss name at the root" },
+    { "path": "targets.json", "excluded": false, "note": "near-miss name at the root" },
+    { "path": "src/index.ts", "excluded": false },
+    { "path": "package.json", "excluded": false },
+    { "path": "README.md", "excluded": false },
+    { "path": ".gitignore", "excluded": false, "note": "a bare startsWith('.git') would swallow it" },
+    { "path": "environment.ts", "excluded": false, "note": "a bare startsWith('.env') would swallow .environment files" },
+    { "path": "server.pem", "excluded": false, "note": "a private-key name is a warning, never an exclusion" },
+    { "path": "id_rsa", "excluded": false, "note": "a private-key name is a warning, never an exclusion" }
+  ],
+  "credential": [
+    { "file": ".npmrc", "text": "//registry.npmjs.org/:_authToken=npm_abc123", "refused": true },
+    { "file": ".npmrc", "text": "registry=https://r.example.com\n//r.example.com/:_authToken = xyz", "refused": true },
+    { "file": ".npmrc", "text": "_auth=dXNlcjpwYXNz", "refused": true },
+    { "file": ".npmrc", "text": "//r.example.com/:_password=cGFzcw==", "refused": true },
+    { "file": "sub/.npmrc", "text": "//r.example.com/:_authToken=abc", "refused": true },
+    { "file": "packages/api/.npmrc", "text": "//registry.npmjs.org/:_authToken=npm_abc123\n", "refused": true },
+    { "file": ".yarnrc.yml", "text": "npmAuthToken: npm_abc", "refused": true },
+    { "file": ".yarnrc.yml", "text": "npmAuthToken: abc123\n", "refused": true },
+    { "file": ".npmrc", "text": "build_from_source=true", "refused": false },
+    { "file": ".npmrc", "text": "@acme:registry=https://r.example.com", "refused": false },
+    { "file": ".npmrc", "text": "//r.example.com/:_authToken=${NPM_TOKEN}", "refused": false, "note": "a ${VAR} reference is not a secret" },
+    { "file": ".npmrc", "text": "# //r.example.com/:_authToken=old", "refused": false },
+    { "file": ".npmrc", "text": "; _auth=old", "refused": false },
+    { "file": ".yarnrc.yml", "text": "npmAuthToken: \"${NPM_TOKEN}\"", "refused": false },
+    { "file": "notes.txt", "text": "_authToken=abc", "refused": false, "note": "only .npmrc and .yarnrc.yml are read" }
+  ],
+  "private_key_warning": [
+    { "path": "key.pem", "warns": true },
+    { "path": "certs/server.KEY", "warns": true },
+    { "path": "id_rsa", "warns": true },
+    { "path": ".ssh/id_rsa_work", "warns": true },
+    { "path": "a/b/tls.pem", "warns": true },
+    { "path": "id_rsa.pub", "warns": false },
+    { "path": "src/index.ts", "warns": false },
+    { "path": "keys.md", "warns": false },
+    { "path": "monkey.pem.txt", "warns": false },
+    { "path": "pem", "warns": false }
+  ],
+  "ignore_protected_paths": ["task.yaml", "task.yml", "task.json", "package.json", "package-lock.json"],
+  "ignore_match": [
+    { "name": "blank and comment lines make no rule", "rules": "\n# note\n   \n", "rule_count": 0, "checks": [] },
+    {
+      "name": "a bare name matches a segment at any depth",
+      "rules": "coverage\n*.log\n",
+      "checks": [
+        { "path": "coverage", "dir": true, "ignored": true },
+        { "path": "a/b/coverage", "dir": true, "ignored": true },
+        { "path": "a/debug.log", "dir": false, "ignored": true },
+        { "path": "coverage2", "dir": true, "ignored": false },
+        { "path": "src/index.ts", "dir": false, "ignored": false }
+      ]
+    },
+    {
+      "name": "a leading slash anchors to the root",
+      "rules": "/docs\n",
+      "checks": [
+        { "path": "docs", "dir": true, "ignored": true },
+        { "path": "src/docs", "dir": true, "ignored": false }
+      ]
+    },
+    {
+      "name": "a pattern with a slash inside is anchored",
+      "rules": "data/sample.csv\n",
+      "checks": [
+        { "path": "data/sample.csv", "dir": false, "ignored": true },
+        { "path": "x/data/sample.csv", "dir": false, "ignored": false }
+      ]
+    },
+    {
+      "name": "a trailing slash matches folders only",
+      "rules": "build/\n",
+      "checks": [
+        { "path": "build", "dir": true, "ignored": true },
+        { "path": "build", "dir": false, "ignored": false }
+      ]
+    },
+    {
+      "name": "* and ? stay inside one segment",
+      "rules": "a/*.txt\nb?.md\n",
+      "checks": [
+        { "path": "a/x.txt", "dir": false, "ignored": true },
+        { "path": "a/x/y.txt", "dir": false, "ignored": false },
+        { "path": "bx.md", "dir": false, "ignored": true },
+        { "path": "b/.md", "dir": false, "ignored": false }
+      ]
+    },
+    {
+      "name": "** spans segments",
+      "rules": "docs/**/draft.md\nfixtures/**\n",
+      "checks": [
+        { "path": "docs/draft.md", "dir": false, "ignored": true },
+        { "path": "docs/a/b/draft.md", "dir": false, "ignored": true },
+        { "path": "fixtures/a/b.json", "dir": false, "ignored": true },
+        { "path": "other/draft.md", "dir": false, "ignored": false }
+      ]
+    },
+    {
+      "name": "a regex character in a name is literal",
+      "rules": "a.b\n",
+      "checks": [
+        { "path": "a.b", "dir": false, "ignored": true },
+        { "path": "axb", "dir": false, "ignored": false }
+      ]
+    },
+    {
+      "name": "a folder-only rule cannot hit a protected FILE",
+      "rules": "task.yaml/\n",
+      "rule_count": 1,
+      "checks": [{ "path": "task.yaml", "dir": false, "ignored": false }]
+    }
+  ],
+  "ignore_refusal": [
+    {
+      "name": "a \"!\" line is an error naming the line: no re-include",
+      "rules": "data\n!data/keep.csv\n",
+      "errors": [".ignitifyignore:2: \"!\" (re-include) is not supported; .ignitifyignore can only leave files out"]
+    },
+    { "name": "a character class", "rules": "a[0-9]", "errors": [".ignitifyignore:1: \"a[0-9]\" uses \"[...]\" or \"\\\", which are not supported"] },
+    { "name": "a backslash", "rules": "a\\b", "errors": [".ignitifyignore:1: \"a\\b\" uses \"[...]\" or \"\\\", which are not supported"] },
+    { "name": "** inside a segment", "rules": "a**b", "errors": [".ignitifyignore:1: \"a**b\" has \"**\" must be a whole path segment"] },
+    { "name": "an empty segment", "rules": "a//b", "errors": [".ignitifyignore:1: \"a//b\" has an empty path segment"] },
+    { "name": "a rule that drops task.yaml", "rules": "task.yaml", "errors": [".ignitifyignore:1: \"task.yaml\" would leave out task.yaml, which the deploy needs"] },
+    { "name": "a glob that drops task.yaml", "rules": "task.*", "errors": [".ignitifyignore:1: \"task.*\" would leave out task.yaml, which the deploy needs"] },
+    { "name": "a star drops everything", "rules": "*", "errors": [".ignitifyignore:1: \"*\" would leave out task.yaml, which the deploy needs"] },
+    { "name": "a double star drops everything", "rules": "**", "errors": [".ignitifyignore:1: \"**\" would leave out task.yaml, which the deploy needs"] },
+    { "name": "a rooted rule that drops package.json", "rules": "/package.json", "errors": [".ignitifyignore:1: \"/package.json\" would leave out package.json, which the deploy needs"] },
+    { "name": "a glob that drops package.json", "rules": "package*.json", "errors": [".ignitifyignore:1: \"package*.json\" would leave out package.json, which the deploy needs"] },
+    { "name": "a glob that drops task.json", "rules": "*.json", "errors": [".ignitifyignore:1: \"*.json\" would leave out task.json, which the deploy needs"] },
+    {
+      "name": "every bad line is reported, not just the first",
+      "rules": "!a\ntask.yaml\nb[1]\n",
+      "errors": [
+        ".ignitifyignore:1: \"!\" (re-include) is not supported; .ignitifyignore can only leave files out",
+        ".ignitifyignore:2: \"task.yaml\" would leave out task.yaml, which the deploy needs",
+        ".ignitifyignore:3: \"b[1]\" uses \"[...]\" or \"\\\", which are not supported"
+      ]
+    }
+  ],
+  "lockfile": [
+    { "runtime": "node", "files": ["index.ts"], "error_contains": ["package-lock.json is missing", "reproducible"] },
+    { "runtime": "node", "files": ["index.ts", "package-lock.json"], "error_contains": null },
+    { "runtime": "python", "files": ["main.py"], "error_contains": ["requirements.txt is missing", "reproducible"] },
+    { "runtime": "python", "files": ["main.py", "requirements.txt"], "error_contains": null },
+    { "runtime": "go", "files": ["main.go", "go.mod"], "error_contains": ["go.sum is missing", "reproducible"] },
+    { "runtime": "go", "files": ["main.go", "go.mod", "go.sum"], "error_contains": null },
+    { "runtime": "rust", "files": ["src/main.rs", "Cargo.toml"], "error_contains": ["Cargo.lock is missing", "reproducible"] },
+    { "runtime": "rust", "files": ["src/main.rs", "Cargo.toml", "Cargo.lock"], "error_contains": null },
+    { "runtime": "node", "files": ["Cargo.lock"], "error_contains": ["package-lock.json is missing"], "note": "each runtime names ITS OWN lockfile" },
+    { "runtime": "rust", "files": ["Cargo.lock"], "error_contains": null }
+  ],
+  "trees": [
+    {
+      "name": "a nested tree lists with POSIX separators, sorted",
+      "files": { "index.ts": "x", "src/deep/mod.ts": "x", "package.json": "x" },
+      "selected": ["index.ts", "package.json", "src/deep/mod.ts"]
+    },
+    {
+      "name": "vendored trees and local state are left out at any depth, and root build output",
+      "files": {
+        "index.ts": "x",
+        "node_modules/lib/x.js": "x",
+        "pkg/node_modules/y.js": "x",
+        ".git/HEAD": "x",
+        ".ignitify/state.json": "x",
+        "target/release/app": "x"
+      },
+      "selected": ["index.ts"]
+    },
+    {
+      "name": "node_modules is dropped without a warning: that would be noise on every deploy",
+      "files": { "index.ts": "x", "node_modules/lib/x.js": "x" },
+      "selected": ["index.ts"],
+      "warning_count": 0,
+      "error_count": 0
+    },
+    {
+      "name": ".env is left out and REPORTED: a silently dropped file is worse",
+      "files": { "index.ts": "x", ".env": "SECRET=1" },
+      "selected": ["index.ts"],
+      "warning_contains": [".env"],
+      "error_count": 0
+    },
+    {
+      "name": "target and dist are dropped at the root only, quietly; a nested one is source",
+      "files": {
+        "index.ts": "x",
+        "dist/bundle.js": "x",
+        "target/release/app": "x",
+        "internal/dist/dist.go": "x",
+        "src/target/mod.rs": "x",
+        "mypkg/dist/__init__.py": "x",
+        "src/node_modules/pkg/dist/x.js": "x"
+      },
+      "selected": ["index.ts", "internal/dist/dist.go", "mypkg/dist/__init__.py", "src/target/mod.rs"],
+      "warning_count": 0,
+      "error_count": 0
+    },
+    {
+      "name": "an .npmrc holding a registry token is refused and never selected",
+      "files": { ".npmrc": "//registry.npmjs.org/:_authToken=npm_secret" },
+      "not_selected": [".npmrc"],
+      "error_contains": [".npmrc holds a registry credential"]
+    },
+    {
+      "name": "an .npmrc with build settings only is uploaded",
+      "files": { ".npmrc": "build_from_source=true" },
+      "selected": [".npmrc"],
+      "error_count": 0
+    },
+    {
+      "name": "a symlink is refused instead of followed out of the task folder",
+      "files": { "index.ts": "x" },
+      "symlinks": { "leak": "/etc/hosts" },
+      "error_contains": ["leak: symlinks are not uploaded"]
+    },
+    {
+      "name": ".ignitifyignore leaves ignored files and folders out and lists them (a folder ends in \"/\")",
+      "files": {
+        "index.ts": "x",
+        "data/sample.csv": "x",
+        "docs/a.md": "x",
+        "src/notes.log": "x",
+        ".ignitifyignore": "data/sample.csv\ndocs/\n*.log\n"
+      },
+      "selected": ["index.ts"],
+      "ignored": ["data/sample.csv", "docs/", "src/notes.log"]
+    },
+    {
+      "name": "the ignore file itself is never uploaded and is not listed as ignored",
+      "files": { "index.ts": "x", ".ignitifyignore": "docs/\n" },
+      "selected": ["index.ts"],
+      "ignored": []
+    },
+    {
+      "name": "an ignored symlink is skipped, not an error",
+      "files": { "index.ts": "x", ".ignitifyignore": "link\n" },
+      "symlinks": { "link": "/etc/hosts" },
+      "selected": ["index.ts"],
+      "error_count": 0
+    },
+    {
+      "name": ".ignitifyignore cannot re-include the floor: .env stays out whatever the rules say",
+      "files": { "index.ts": "x", ".env": "S=1", ".ignitifyignore": "docs/\n" },
+      "selected": ["index.ts"]
+    },
+    {
+      "name": "private-key names are uploaded with one warning each; a .pub key is silent",
+      "files": { "index.ts": "x", "certs/server.pem": "x", "tls.key": "x", "id_rsa": "x", "id_rsa.pub": "x" },
+      "selected": ["certs/server.pem", "id_rsa", "id_rsa.pub", "index.ts", "tls.key"],
+      "warning_count": 3,
+      "warning_contains": ["certs/server.pem looks like a private key"],
+      "error_count": 0
+    },
+    {
+      "name": "a private-key name that .ignitifyignore left out gives no warning",
+      "files": { "index.ts": "x", "test/fixture.pem": "x", ".ignitifyignore": "test/\n" },
+      "selected": ["index.ts"],
+      "warning_count": 0
+    }
+  ]
+}

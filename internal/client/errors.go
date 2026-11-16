@@ -61,18 +61,27 @@ type goneRule struct {
 	message string
 }
 
-// The error texts of the key and secret routes' "no such object" 404, which carry no reason.
+// The error texts of the "no such object" 404 of the routes that answer it
+// without a reason.
 const (
-	GoneKeyMessage    = "no live key with that id in this tenant"
-	GoneSecretMessage = "secret not found"
+	GoneKeyMessage        = "no live key with that id in this tenant"
+	GoneSecretMessage     = "secret not found"
+	GoneTaskMessage       = "task not found or does not belong to this tenant"
+	GoneDeploymentMessage = "deployment not found"
+	GoneHookMessage       = "not found"
+	// TaskSlugTakenMessage is the 409 of a task create on a live task's slug.
+	TaskSlugTakenMessage = "a task with this slug already exists for this tenant"
 )
 
 // The "no such object" 404 of each route the provider reads or deletes.
 var (
-	goneUser   = goneRule{reason: ReasonUserNotFound}
-	goneGroup  = goneRule{reason: ReasonGroupNotFound}
-	goneKey    = goneRule{message: GoneKeyMessage}
-	goneSecret = goneRule{message: GoneSecretMessage}
+	goneUser       = goneRule{reason: ReasonUserNotFound}
+	goneGroup      = goneRule{reason: ReasonGroupNotFound}
+	goneKey        = goneRule{message: GoneKeyMessage}
+	goneSecret     = goneRule{message: GoneSecretMessage}
+	goneTask       = goneRule{message: GoneTaskMessage}
+	goneDeployment = goneRule{message: GoneDeploymentMessage}
+	goneHook       = goneRule{message: GoneHookMessage}
 )
 
 // matches reports whether an error answer is this route's own 404. Pure.
@@ -131,4 +140,12 @@ func HasReason(err error, reason string) bool {
 // owner-only route.
 func IsOwnerRequired(err error) bool {
 	return HasReason(err, ReasonOwnerRequired)
+}
+
+// IsTaskSlugTaken reports whether err is the refusal of a task create on the
+// slug of a live task.
+func IsTaskSlugTaken(err error) bool {
+	apiErr := asAPIError(err)
+	return apiErr != nil && apiErr.apiShaped && apiErr.Status == http.StatusConflict &&
+		apiErr.Reason == "" && apiErr.Message == TaskSlugTakenMessage
 }

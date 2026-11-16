@@ -64,9 +64,9 @@ func New(cfg Config) (*Client, error) {
 		return nil, errors.New("an API key is required")
 	}
 	// The API never redirects. A redirect is answered as an error and never
-	// followed, so the key is never sent to the place a 3xx points at.
+	// followed, so the key is never sent to the place a 3xx points at. Each
+	// try has its own deadline (request.timeout), so the client sets none.
 	httpClient := &http.Client{
-		Timeout: defaultRequestTimeout,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -106,7 +106,13 @@ func randomIdempotencyKey() (string, error) {
 type request struct {
 	method string
 	path   string
-	body   any
+	// body is sent as JSON; nil sends no body.
+	body any
+	// raw, when set, is sent as is with contentType instead of body.
+	raw         []byte
+	contentType string
+	// timeout bounds one try; zero means defaultRequestTimeout.
+	timeout time.Duration
 	// out receives the decoded 2xx answer; nil ignores the body.
 	out any
 	// gone is the route's "no such object" 404; the zero rule for routes with none.
@@ -117,9 +123,13 @@ type request struct {
 // Idempotency-Key, the same on every try, so a retry after a lost answer never
 // acts twice. It returns an *APIError for a non-2xx answer.
 func (c *Client) do(ctx context.Context, r request) error {
-	payload, err := encodeBody(r.body)
+	payload, contentType, err := r.payload()
 	if err != nil {
 		return err
+	}
+	timeout := r.timeout
+	if timeout == 0 {
+		timeout = defaultRequestTimeout
 	}
 	idemKey := ""
 	if r.method != http.MethodGet {
@@ -128,7 +138,7 @@ func (c *Client) do(ctx context.Context, r request) error {
 		}
 	}
 	for attempt := 0; ; attempt++ {
-		status, header, body, sendErr := c.send(ctx, r.method, r.path, payload, idemKey)
+		status, header, body, sendErr := c.send(ctx, tryInput{method: r.method, path: r.path, payload: payload, contentType: contentType, idemKey: idemKey, timeout: timeout})
 		if sendErr == nil && status >= 200 && status < 300 {
 			return decodeBody(r.method, r.path, body, r.out)
 		}
@@ -167,15 +177,20 @@ func reasonOf(apiErr *APIError) string {
 	return apiErr.Reason
 }
 
-func encodeBody(body any) ([]byte, error) {
-	if body == nil {
-		return nil, nil
+// payload is the request body and its content type: the raw bytes, or the
+// body as JSON, or nothing.
+func (r request) payload() ([]byte, string, error) {
+	if r.raw != nil {
+		return r.raw, r.contentType, nil
 	}
-	payload, err := json.Marshal(body)
+	if r.body == nil {
+		return nil, "", nil
+	}
+	payload, err := json.Marshal(r.body)
 	if err != nil {
-		return nil, fmt.Errorf("encode request body: %w", err)
+		return nil, "", fmt.Errorf("encode request body: %w", err)
 	}
-	return payload, nil
+	return payload, contentTypeJSON, nil
 }
 
 func decodeBody(method, path string, body []byte, out any) error {
@@ -188,13 +203,25 @@ func decodeBody(method, path string, body []byte, out any) error {
 	return nil
 }
 
+// tryInput is one HTTP try of a request.
+type tryInput struct {
+	method      string
+	path        string
+	payload     []byte
+	contentType string
+	idemKey     string
+	timeout     time.Duration
+}
+
 // send makes one HTTP try and reads the whole (bounded) answer.
-func (c *Client) send(ctx context.Context, method, path string, payload []byte, idemKey string) (int, http.Header, []byte, error) {
+func (c *Client) send(ctx context.Context, in tryInput) (int, http.Header, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, in.timeout)
+	defer cancel()
 	var bodyReader io.Reader
-	if payload != nil {
-		bodyReader = bytes.NewReader(payload)
+	if in.payload != nil {
+		bodyReader = bytes.NewReader(in.payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, in.method, c.baseURL+in.path, bodyReader)
 	if err != nil {
 		return 0, http.Header{}, nil, err
 	}
@@ -203,11 +230,11 @@ func (c *Client) send(ctx context.Context, method, path string, payload []byte, 
 	if c.userAgent != "" {
 		req.Header.Set(headerUserAgent, c.userAgent)
 	}
-	if payload != nil {
-		req.Header.Set(headerContentType, contentTypeJSON)
+	if in.payload != nil {
+		req.Header.Set(headerContentType, in.contentType)
 	}
-	if idemKey != "" {
-		req.Header.Set(headerIdempotencyKey, idemKey)
+	if in.idemKey != "" {
+		req.Header.Set(headerIdempotencyKey, in.idemKey)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

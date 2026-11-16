@@ -3,8 +3,10 @@
 package provider
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -23,11 +25,12 @@ type recordedRequest struct {
 	path           string
 	idempotencyKey string
 	userAgent      string
+	contentType    string
 	body           map[string]any
 }
 
-// fakeAPI is an in-memory tenant API with the access, secrets and identity
-// routes. Its switches force the error paths.
+// fakeAPI is an in-memory tenant API with the access, secrets, identity,
+// task, deployment and hook routes. Its switches force the error paths.
 type fakeAPI struct {
 	mu       sync.Mutex
 	users    map[string]client.AccessUser
@@ -37,6 +40,8 @@ type fakeAPI struct {
 	values   map[string]string
 	requests []recordedRequest
 	nextID   int
+	// app holds the tasks, deployments and hooks (fake_app_api_test.go).
+	app fakeApp
 	// baseURL is where the fake listens.
 	baseURL string
 
@@ -63,6 +68,7 @@ func newFakeAPI(t *testing.T) (*fakeAPI, *client.Client) {
 		keys:    map[string]client.AccessKey{},
 		secrets: map[string]client.Secret{},
 		values:  map[string]string{},
+		app:     newFakeApp(),
 	}
 	srv := httptest.NewServer(f.routes())
 	t.Cleanup(srv.Close)
@@ -97,8 +103,11 @@ func plainError(w http.ResponseWriter, status int, message string) {
 // owner-only switch.
 func (f *fakeAPI) handle(ownerOnly bool, fn func(w http.ResponseWriter, r *http.Request, body map[string]any)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// The raw body stays readable for the routes that are not JSON (a deploy upload).
+		raw, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(raw))
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.Unmarshal(raw, &body)
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.requests = append(f.requests, recordedRequest{
@@ -106,6 +115,7 @@ func (f *fakeAPI) handle(ownerOnly bool, fn func(w http.ResponseWriter, r *http.
 			path:           r.URL.Path,
 			idempotencyKey: r.Header.Get("Idempotency-Key"),
 			userAgent:      r.Header.Get("User-Agent"),
+			contentType:    r.Header.Get("Content-Type"),
 			body:           body,
 		})
 		if f.override != nil {
@@ -138,6 +148,7 @@ func (f *fakeAPI) routes() http.Handler {
 	mux.HandleFunc("POST /secrets", f.handle(false, f.setSecret))
 	mux.HandleFunc("GET /secrets/{name}", f.handle(false, f.getSecret))
 	mux.HandleFunc("DELETE /secrets/{name}", f.handle(false, f.deleteSecret))
+	f.appRoutes(mux)
 	mux.HandleFunc("GET /whoami", f.handle(false, func(w http.ResponseWriter, _ *http.Request, _ map[string]any) {
 		writeJSON(w, http.StatusOK, f.whoami)
 	}))
