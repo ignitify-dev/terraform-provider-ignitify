@@ -2,10 +2,11 @@
 
 Manage an existing Ignitify tenant as code with Terraform or OpenTofu.
 
-Status: **v0.2, in development.** Not yet published to a registry. Install it
-from a local build (below).
+Status: **v0.3, the first public release.** Install it from the Terraform
+Registry or the OpenTofu Registry as `ignitify-dev/ignitify`, or from a local
+build (below).
 
-## What v0.2 manages
+## What it manages
 
 | Type | Name | Import id | Key needed |
 | :-- | :-- | :-- | :-- |
@@ -159,8 +160,8 @@ With `dev_overrides`, skip `terraform init` for this provider; `plan` and
 `apply` print a warning that the override is active.
 
 To install it like a released provider instead, use a local filesystem mirror:
-copy the binary to
-`<mirror>/registry.terraform.io/ignitify-dev/ignitify/0.1.0/<os>_<arch>/terraform-provider-ignitify_v0.1.0`
+build with `make build VERSION=<version>` and copy the binary to
+`<mirror>/registry.terraform.io/ignitify-dev/ignitify/<version>/<os>_<arch>/terraform-provider-ignitify_v<version>`
 and set `filesystem_mirror { path = "<mirror>" }` in the same file.
 
 ## Development
