@@ -64,10 +64,15 @@ test-terraform: testacc-image
 
 # Acceptance tests create real objects. They need IGNITIFY_API_URL and
 # IGNITIFY_API_KEY (an owner key) in the environment, and run OpenTofu.
+# TESTACC_NETWORK, when set, is the test container's docker network (for
+# example container:<name> to share a local forwarder's network); empty keeps
+# the default network.
+TESTACC_NETWORK ?=
+
 testacc: testacc-image
 	@test -n "$$IGNITIFY_API_URL" || (echo "IGNITIFY_API_URL is not set" && exit 1)
 	@test -n "$$IGNITIFY_API_KEY" || (echo "IGNITIFY_API_KEY is not set" && exit 1)
-	$(DOCKER_RUN) $(TOFU_ENV) -e TF_ACC=1 \
+	$(DOCKER_RUN) $(if $(TESTACC_NETWORK),--network $(TESTACC_NETWORK)) $(TOFU_ENV) -e TF_ACC=1 \
 		-e IGNITIFY_API_URL -e IGNITIFY_API_KEY \
 		$(TESTACC_IMAGE) go test -count=1 -v -timeout 30m -run '^TestAcc' ./internal/provider/...
 
