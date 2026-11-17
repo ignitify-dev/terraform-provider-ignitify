@@ -4100,9 +4100,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ================================================================================
-golang.org/x/net v0.52.0
+golang.org/x/net v0.55.0
 Licence: BSD-3-Clause
-https://cs.opensource.google/go/x/net/+/v0.52.0:LICENSE
+https://cs.opensource.google/go/x/net/+/v0.55.0:LICENSE
 --------------------------------------------------------------------------------
 Copyright 2009 The Go Authors.
 
@@ -4134,9 +4134,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ================================================================================
-golang.org/x/sys/unix v0.43.0
+golang.org/x/sys/unix v0.45.0
 Licence: BSD-3-Clause
-https://cs.opensource.google/go/x/sys/+/v0.43.0:LICENSE
+https://cs.opensource.google/go/x/sys/+/v0.45.0:LICENSE
 --------------------------------------------------------------------------------
 Copyright 2009 The Go Authors.
 
@@ -4168,9 +4168,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ================================================================================
-golang.org/x/text v0.36.0
+golang.org/x/text v0.37.0
 Licence: BSD-3-Clause
-https://cs.opensource.google/go/x/text/+/v0.36.0:LICENSE
+https://cs.opensource.google/go/x/text/+/v0.37.0:LICENSE
 --------------------------------------------------------------------------------
 Copyright 2009 The Go Authors.
 
@@ -4202,9 +4202,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ================================================================================
-google.golang.org/genproto/googleapis/rpc/status v0.0.0-20251202230838-ff82c1b0f217
+google.golang.org/genproto/googleapis/rpc/status v0.0.0-20260526163538-3dc84a4a5aaa
 Licence: Apache-2.0
-https://github.com/googleapis/go-genproto/blob/ff82c1b0f217/googleapis/rpc/LICENSE
+https://github.com/googleapis/go-genproto/blob/3dc84a4a5aaa/googleapis/rpc/LICENSE
 --------------------------------------------------------------------------------
 
                                  Apache License
@@ -4411,9 +4411,9 @@ https://github.com/googleapis/go-genproto/blob/ff82c1b0f217/googleapis/rpc/LICEN
 
 
 ================================================================================
-google.golang.org/grpc v1.79.3
+google.golang.org/grpc v1.83.1
 Licence: Apache-2.0
-https://github.com/grpc/grpc-go/blob/v1.79.3/LICENSE
+https://github.com/grpc/grpc-go/blob/v1.83.1/LICENSE
 --------------------------------------------------------------------------------
 
                                  Apache License
@@ -4655,7 +4655,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 ================================================================================
-NOTICE of google.golang.org/grpc@v1.79.3
+NOTICE of google.golang.org/grpc@v1.83.1
 --------------------------------------------------------------------------------
 Copyright 2014 gRPC authors.
 
