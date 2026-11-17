@@ -3,8 +3,9 @@
 Manage an existing Ignitify tenant as code with Terraform or OpenTofu.
 
 Status: **v0.3, the first public release.** Install it from the Terraform
-Registry or the OpenTofu Registry as `ignitify-dev/ignitify`, or from a local
-build (below).
+Registry as `ignitify-dev/ignitify`, or from a local build (below). The
+provider is not in the OpenTofu Registry: with OpenTofu, write the full
+address `registry.terraform.io/ignitify-dev/ignitify` as the `source`.
 
 ## What it manages
 
