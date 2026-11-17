@@ -38,6 +38,7 @@ resource "ignitify_group" "deployers" {
     "hooks.read",
     "hooks.write",
     "runs.read",
+    # Add "runs.write" when CI also starts runs (ignitify task:run).
   ]
   members = [ignitify_user.ci.name]
 }

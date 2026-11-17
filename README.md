@@ -59,7 +59,7 @@ hooks work with a **user key**. Keep them apart:
 A user key with `deployments.write` can read secret values through the code it
 deploys: grant it only to who may read them.
 
-With a user key, an access resource fails with "owner key required".
+With a user key, an access resource fails with HTTP 403, reason `owner-required` ("only an owner key manages users, groups and keys").
 
 ## Behaviour to know
 
