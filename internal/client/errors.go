@@ -30,6 +30,8 @@ type APIError struct {
 	Reason string
 	// Needed names the missing permission of a `permission-denied` refusal.
 	Needed string
+	// Field names the request body field a `bad-request` refusal is about, empty when the answer names none.
+	Field string
 	// apiShaped is true when the body was the API's JSON error shape (`{ "error": … }`).
 	// An unknown route or a proxy in the way answers another body.
 	apiShaped bool
@@ -49,6 +51,7 @@ type errorBody struct {
 	Error  string `json:"error"`
 	Reason string `json:"reason"`
 	Needed string `json:"needed"`
+	Field  string `json:"field"`
 }
 
 // The `reason` codes of the error answers the provider branches on.
@@ -58,6 +61,7 @@ const (
 	ReasonTaskNotFound          = "task-not-found"
 	ReasonDeploymentNotFound    = "deployment-not-found"
 	ReasonHookNotFound          = "hook-not-found"
+	ReasonScheduleNotFound      = "schedule-not-found"
 	ReasonTaskSlugTaken         = "task-slug-taken"
 	ReasonSecretExists          = "secret-exists"
 	ReasonRateLimited           = "rate-limited"
@@ -90,6 +94,7 @@ var (
 	goneTask       = goneAnswer(ReasonTaskNotFound)
 	goneDeployment = goneAnswer(ReasonDeploymentNotFound)
 	goneHook       = goneAnswer(ReasonHookNotFound)
+	goneSchedule   = goneAnswer(ReasonScheduleNotFound)
 )
 
 // taskSlugTaken is the refusal of a task create on the slug of a live task.
@@ -113,7 +118,7 @@ func parseAPIError(method, path string, status int, body []byte, gone answerRule
 	if !shaped {
 		message = http.StatusText(status)
 	}
-	out := &APIError{Method: method, Path: path, Status: status, Message: message, Reason: parsed.Reason, Needed: parsed.Needed, apiShaped: shaped}
+	out := &APIError{Method: method, Path: path, Status: status, Message: message, Reason: parsed.Reason, Needed: parsed.Needed, Field: parsed.Field, apiShaped: shaped}
 	out.gone = gone.matches(out)
 	return out
 }
@@ -158,4 +163,13 @@ func IsTaskSlugTaken(err error) bool {
 func IsSecretExists(err error) bool {
 	apiErr := asAPIError(err)
 	return apiErr != nil && secretExists.matches(apiErr)
+}
+
+// FieldOf returns the request body field an API error answer names, or "".
+func FieldOf(err error) string {
+	apiErr := asAPIError(err)
+	if apiErr == nil || !apiErr.apiShaped {
+		return ""
+	}
+	return apiErr.Field
 }

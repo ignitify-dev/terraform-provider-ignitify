@@ -18,8 +18,9 @@ import (
 	"github.com/ignitify-dev/terraform-provider-ignitify/internal/client"
 )
 
-// The fake's task, deployment and hook routes. A task is addressed by its
-// slug or its id; a deploy takes the task id, as the real route does.
+// The fake's task, deployment and hook routes (the schedule routes are in
+// fake_schedule_api_test.go). A task is addressed by its slug or its id; a
+// deploy takes the task id, as the real route does.
 
 // fakeTask is a task row; a deleted task keeps its row, and a create on its
 // slug brings the same row back.
@@ -50,6 +51,11 @@ type fakeApp struct {
 	deployments map[string]*fakeDeployment
 	depOrder    []string
 	hooks       map[string]*fakeHook
+	schedules   map[string]*fakeSchedule
+	// scheduleQuota, when above zero, is the live schedule cap; a create at it answers 429.
+	scheduleQuota int
+	// omitScheduleDigest answers schedules without payload_sha256, as a server before it did.
+	omitScheduleDigest bool
 	// buildPolls is how many reads a new build stays BUILDING.
 	buildPolls int
 	// failBuilds makes every new build end FAILED.
@@ -65,7 +71,7 @@ type fakeApp struct {
 const fakeFailureReason = "npm install failed: the lockfile names a missing package"
 
 func newFakeApp() fakeApp {
-	return fakeApp{tasks: map[string]*fakeTask{}, deployments: map[string]*fakeDeployment{}, hooks: map[string]*fakeHook{}}
+	return fakeApp{tasks: map[string]*fakeTask{}, deployments: map[string]*fakeDeployment{}, hooks: map[string]*fakeHook{}, schedules: map[string]*fakeSchedule{}}
 }
 
 func (f *fakeAPI) appRoutes(mux *http.ServeMux) {
@@ -80,6 +86,7 @@ func (f *fakeAPI) appRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /deployments/{id}", f.handle(false, f.getDeployment))
 	mux.HandleFunc("DELETE /deployments/{id}", f.handle(false, f.deleteDeployment))
 	mux.HandleFunc("PUT /deployments/{id}/notify", f.handle(false, f.setNotify))
+	f.scheduleRoutes(mux)
 }
 
 // liveTask finds a live task by slug or id.
@@ -117,7 +124,7 @@ func (f *fakeAPI) getTask(w http.ResponseWriter, r *http.Request, _ map[string]a
 	writeJSON(w, http.StatusOK, t.task)
 }
 
-// deleteTask deletes the task with its deployments and hooks.
+// deleteTask deletes the task with its deployments, hooks and schedules.
 func (f *fakeAPI) deleteTask(w http.ResponseWriter, r *http.Request, _ map[string]any) {
 	t := f.liveTask(r.PathValue("id"))
 	if t == nil {
@@ -133,6 +140,11 @@ func (f *fakeAPI) deleteTask(w http.ResponseWriter, r *http.Request, _ map[strin
 	for _, h := range f.app.hooks {
 		if h.hook.TaskID == t.task.ID {
 			h.deleted = true
+		}
+	}
+	for _, s := range f.app.schedules {
+		if s.taskID == t.task.ID {
+			s.deleted = true
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": map[string]any{"task_id": t.task.ID}})

@@ -1,7 +1,8 @@
-# App resources: a task, its deployed code, a hook that starts it, and the
-# secrets it reads. Apply with a USER key (IGNITIFY_API_KEY) whose user is in a
-# group with tasks.*, deployments.*, hooks.*, secrets.read and secrets.write,
-# for example the key made by ../access.
+# App resources: a task, its deployed code, a hook and a nightly schedule that
+# start it, and the secrets it reads. Apply with a USER key (IGNITIFY_API_KEY)
+# whose user is in a group with tasks.*, deployments.*, hooks.*, runs.read,
+# runs.write, secrets.read and secrets.write, for example the key made by
+# ../access. runs.write also lets the key start runs.
 
 terraform {
   required_version = ">= 1.11"
@@ -56,6 +57,17 @@ resource "ignitify_deployment" "report" {
 # The hook belongs to the task: a code update keeps its URL and secret.
 resource "ignitify_hook" "report" {
   task = ignitify_task.report.slug
+}
+
+# A nightly run. The task comes from the deployment, so the schedule is made
+# after the first build is READY. Destroying only the deployment leaves no
+# ready one: the slots then miss, and the platform pauses the schedule.
+# The payload is stored in the state in plain text: never a secret.
+resource "ignitify_schedule" "nightly" {
+  task     = ignitify_deployment.report.task
+  cron     = "0 3 * * *"
+  timezone = "Europe/Berlin"
+  payload  = jsonencode({ day = "yesterday" })
 }
 
 output "hook_url" {

@@ -18,6 +18,7 @@ address `registry.terraform.io/ignitify-dev/ignitify` as the `source`.
 | Resource | `ignitify_task` | the task slug | a key with `tasks.read` and `tasks.write` |
 | Resource | `ignitify_deployment` | the task slug, or `<task slug>/<deployment id>` | a key with `tasks.read` and `deployments.*` (`hooks.write` for notify) |
 | Resource | `ignitify_hook` | `<task slug>/<hook resource_id>` | a key with `hooks.read` and `hooks.write` |
+| Resource | `ignitify_schedule` | `<task slug>/<schedule_id>` | a key with `runs.read` and `runs.write` (`tasks.read` to import) |
 | Data source | `ignitify_whoami` | — | any key |
 
 The provider never creates a tenant, a tier or a purchase, and never creates
@@ -30,6 +31,9 @@ an owner key. It takes an existing key.
 - **An Ignitify API that serves `GET /keys/{id}`, `GET /secrets/{name}`,
   `GET /tasks/{id}`, `GET /hooks/{id}` and task hooks (`/tasks/{id}/hooks`),
   and that reads the task config from the uploaded archive.
+  `ignitify_schedule` needs the recurring-schedule routes (`/schedules`) and
+  `payload_sha256` in the schedule answer; without it the provider warns and
+  cannot see a payload changed outside Terraform.
 - To build: Docker only. Go, Terraform and OpenTofu run in pinned containers.
 
 ## Provider configuration
@@ -48,13 +52,13 @@ provider "ignitify" {
 
 ## Two root modules: least privilege
 
-Users, groups and keys need an **owner key**. Secrets, tasks, deployments and
-hooks work with a **user key**. Keep them apart:
+Users, groups and keys need an **owner key**. Secrets, tasks, deployments,
+hooks and schedules work with a **user key**. Keep them apart:
 
 - `examples/access`: the owner applies it by hand, rarely. It makes a user, a
   group with permissions and members, and the user's API key.
 - `examples/app`: applied by CI with the user key from `examples/access`: a
-  task, its deployment, a hook and a secret.
+  task, its deployment, a hook, a schedule and a secret.
 
 A user key with `deployments.write` can read secret values through the code it
 deploys: grant it only to who may read them.
@@ -86,7 +90,7 @@ With a user key, an access resource fails with HTTP 403, reason `owner-required`
   times with a capped wait. A quota refusal (such as the key or secret cap)
   fails at once, and so does a rate-window refusal that asks for a wait over
   30 seconds (an hour or a day window); the error states the wait. A redirect is never followed.
-- **Tasks.** A destroy deletes the task with its deployments, runs and hooks.
+- **Tasks.** A destroy deletes the task with its deployments, runs, hooks and schedules.
   Creating the same slug again brings back the same task (same `task_id`),
   without them.
 - **Deployments.** `source_dir` is a task folder. At plan time the provider
@@ -134,6 +138,24 @@ With a user key, an access resource fails with HTTP 403, reason `owner-required`
   value; it is empty after an import. Replace the hook
   (`-replace=ignitify_hook.<name>`) to rotate the URL and the secret. A hook
   create answered without its secret (a replay) is deleted and created again.
+- **Schedules** (`ignitify_schedule`) start a run of the task's newest ready
+  deployment at each slot of a cron expression; a code update keeps them.
+  **Never put a secret in `payload`**: it is stored in the state in plain text
+  (the task reads secrets through `ignitify_secret` and `ctx.secrets`). Set
+  `task = ignitify_deployment.<name>.task`, so the schedule is created after the
+  first build is READY; destroying only the deployment makes the slots miss,
+  and the platform then pauses the schedule. The server checks the cron
+  expression and the zone at apply, and the error names the attribute. The
+  server answers a zone in its canonical form (`Europe/Berlin`) and the cron
+  text trimmed: the state keeps your form while the server's answer does not
+  change, so the plan stays empty; after an import the state holds the
+  server's form. A payload, a zone or a pause changed outside Terraform shows
+  as a change, and the apply sets it back. A schedule the platform paused
+  (`status = "auto_paused"`) is not a change: every plan warns, and
+  `ignitify schedule:resume <schedule_id>` resumes it once the cause is fixed.
+  After an import `payload` is empty, so the first apply sends it. A task
+  destroy deletes its schedules. Paused schedules count against the plan's
+  schedule limit; a create over it fails at once (`schedule-quota`).
 - **Only the API's own "not found" answer removes an object from the state.**
   Any other `404` (a wrong endpoint, a proxy page) is an error. If a key create is
   answered without the raw key (a replay), the provider revokes that key and
@@ -171,7 +193,7 @@ and set `filesystem_mirror { path = "<mirror>" }` in the same file.
 | :-- | :-- |
 | `make build` | Build the provider binary for this machine into `bin/`. |
 | `make test` | Unit tests against an in-memory fake API. No network, no Terraform binary. |
-| `make test-tofu` | Real OpenTofu plans and applies against the in-memory fake API (create, empty plan after apply, replace, drift, a 404 removing an object). No network. |
+| `make test-tofu` | Real OpenTofu plans and applies against the in-memory fake API (create, empty plan after apply, replace, drift, a 404 removing an object, schedule echo forms and import). No network. |
 | `make test-terraform` | The same plans and applies, run by a pinned Terraform binary (a test tool only; it is not shipped). No network. |
 | `make lint` | `go vet` and a `gofmt` check. |
 | `make tidy` | `go mod tidy`. |

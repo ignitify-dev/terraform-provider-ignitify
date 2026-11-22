@@ -3,6 +3,8 @@
 package provider
 
 import (
+	"context"
+	"encoding/json"
 	"regexp"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -69,4 +71,23 @@ func permissionValidator() validator.String {
 
 func taskSlugValidator() validator.String {
 	return stringvalidator.RegexMatches(taskSlugPattern, "must be "+taskSlugRule)
+}
+
+// jsonTextValidator accepts a string that is one JSON value, as `jsonencode`
+// makes it.
+type jsonTextValidator struct{}
+
+func jsonTextRule() validator.String { return jsonTextValidator{} }
+
+func (jsonTextValidator) Description(context.Context) string { return "must be valid JSON" }
+
+func (v jsonTextValidator) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+func (v jsonTextValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if !json.Valid([]byte(req.ConfigValue.ValueString())) {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid JSON", "The value "+v.Description(ctx)+"; write it with jsonencode(...).")
+	}
 }

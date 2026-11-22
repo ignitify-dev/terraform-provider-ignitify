@@ -175,6 +175,59 @@ type Hook struct {
 	CreatedAt  string `json:"created_at"`
 }
 
+// Schedule is one recurring schedule as the create, read and edit answers show
+// it. The payload never comes back: PayloadSHA256 is its digest (empty from a
+// server that does not send it). TaskID is the task's server id. RunSettings
+// holds only the run fields the schedule was given.
+type Schedule struct {
+	ScheduleID    string              `json:"schedule_id"`
+	TaskID        string              `json:"task_id"`
+	Cron          string              `json:"cron"`
+	Timezone      string              `json:"timezone"`
+	Overlap       string              `json:"overlap"`
+	Status        string              `json:"status"`
+	PauseReason   *string             `json:"pause_reason"`
+	CreatedBy     string              `json:"created_by"`
+	CreatedAt     string              `json:"created_at"`
+	RunSettings   ScheduleRunSettings `json:"run_settings"`
+	PayloadSHA256 string              `json:"payload_sha256"`
+}
+
+// ScheduleRunSettings are the run fields a schedule was given; nil when not given.
+type ScheduleRunSettings struct {
+	Preset      *string         `json:"preset"`
+	TimeoutSec  *int64          `json:"timeout_sec"`
+	DeadlineSec *int64          `json:"deadline_sec"`
+	Execution   json.RawMessage `json:"execution"`
+}
+
+// The schedule statuses. A tenant sets active or paused; auto_paused is the
+// platform's, set when the schedule keeps failing.
+const (
+	ScheduleActive     = "active"
+	SchedulePaused     = "paused"
+	ScheduleAutoPaused = "auto_paused"
+)
+
+// ScheduleCreate is the body of a schedule create. A nil optional field is not
+// sent, so the server applies its default.
+type ScheduleCreate struct {
+	Task        string          `json:"task"`
+	Cron        string          `json:"cron"`
+	Timezone    string          `json:"timezone"`
+	Payload     json.RawMessage `json:"payload"`
+	Overlap     string          `json:"overlap"`
+	Preset      *string         `json:"preset,omitempty"`
+	TimeoutSec  *int64          `json:"timeout_sec,omitempty"`
+	DeadlineSec *int64          `json:"deadline_sec,omitempty"`
+	Execution   json.RawMessage `json:"execution,omitempty"`
+}
+
+// ScheduleEdit is the body of a schedule edit: the wire field names and their
+// new values. A nil value is sent as JSON null, which removes an optional run
+// field. The server refuses an empty edit.
+type ScheduleEdit map[string]any
+
 // The request bodies.
 
 type userCreateRequest struct {

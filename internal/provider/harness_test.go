@@ -20,13 +20,26 @@ import (
 )
 
 // harness drives one resource's CRUD and import methods directly, the way the
-// framework calls them, with no Terraform binary.
+// framework calls them, with no Terraform binary. It carries the resource's
+// private state from each call to the next, as Terraform does.
 type harness struct {
-	t      *testing.T
-	ctx    context.Context
-	res    resource.Resource
-	schema schema.Schema
-	typ    tftypes.Object
+	t       *testing.T
+	ctx     context.Context
+	res     resource.Resource
+	schema  schema.Schema
+	typ     tftypes.Object
+	private any
+}
+
+// restorePrivate points a call's private state at the one the last call left,
+// or at an empty one. The framework's private-state type is internal, so it is
+// named only by inference.
+func restorePrivate[T any](dst **T, last any) {
+	if p, ok := last.(*T); ok && p != nil {
+		*dst = p
+		return
+	}
+	*dst = new(T)
 }
 
 func newHarness(t *testing.T, newRes func() resource.Resource, c *client.Client) *harness {
@@ -104,13 +117,18 @@ func (h *harness) create(config map[string]tftypes.Value) (tfsdk.State, diag.Dia
 	}
 	req := resource.CreateRequest{Config: cfg, Plan: plan}
 	resp := resource.CreateResponse{State: h.emptyState(), Diagnostics: diags}
+	restorePrivate(&resp.Private, nil)
 	h.res.Create(h.ctx, req, &resp)
+	h.private = resp.Private
 	return resp.State, resp.Diagnostics
 }
 
 func (h *harness) read(state tfsdk.State) (tfsdk.State, diag.Diagnostics) {
-	resp := resource.ReadResponse{State: state}
-	h.res.Read(h.ctx, resource.ReadRequest{State: state}, &resp)
+	req := resource.ReadRequest{State: state}
+	restorePrivate(&req.Private, h.private)
+	resp := resource.ReadResponse{State: state, Private: req.Private}
+	h.res.Read(h.ctx, req, &resp)
+	h.private = resp.Private
 	return resp.State, resp.Diagnostics
 }
 
@@ -144,9 +162,16 @@ func (h *harness) update(prior tfsdk.State, config map[string]tftypes.Value) (tf
 	if diags.HasError() {
 		return prior, diags
 	}
+	return h.applyPlan(prior, cfg, plan, diags)
+}
+
+// applyPlan applies a plan made earlier, as the apply of a saved plan does.
+func (h *harness) applyPlan(prior tfsdk.State, cfg tfsdk.Config, plan tfsdk.Plan, diags diag.Diagnostics) (tfsdk.State, diag.Diagnostics) {
 	req := resource.UpdateRequest{Config: cfg, Plan: plan, State: prior}
-	resp := resource.UpdateResponse{State: tfsdk.State{Schema: h.schema, Raw: plan.Raw}, Diagnostics: diags}
+	restorePrivate(&req.Private, h.private)
+	resp := resource.UpdateResponse{State: tfsdk.State{Schema: h.schema, Raw: plan.Raw}, Diagnostics: diags, Private: req.Private}
 	h.res.Update(h.ctx, req, &resp)
+	h.private = resp.Private
 	return resp.State, resp.Diagnostics
 }
 
@@ -163,6 +188,8 @@ func (h *harness) importAndRead(id string) (tfsdk.State, diag.Diagnostics) {
 	if resp.Diagnostics.HasError() {
 		return resp.State, resp.Diagnostics
 	}
+	// An import starts with no private state.
+	h.private = nil
 	return h.read(resp.State)
 }
 

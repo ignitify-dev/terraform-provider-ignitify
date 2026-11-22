@@ -8,7 +8,8 @@ import (
 )
 
 // The tenant API paths this provider calls. A path parameter is a user or group
-// name, a key id, a secret name, a task slug, a deployment id or a hook id.
+// name, a key id, a secret name, a task slug, a deployment id, a hook id or a
+// schedule id.
 const (
 	pathWhoami           = "/whoami"
 	pathUsers            = "/users"
@@ -29,6 +30,8 @@ const (
 	pathDeployments      = "/deployments"
 	pathDeploymentByID   = "/deployments/%s"
 	pathDeploymentNotify = "/deployments/%s/notify"
+	pathSchedules        = "/schedules"
+	pathScheduleByID     = "/schedules/%s"
 )
 
 // fillPath renders a path pattern with its parameters. Each parameter is

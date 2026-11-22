@@ -233,8 +233,8 @@ func attrOf(s *terraform.State, address, name string) string {
 	return rs.Primary.Attributes[name]
 }
 
-// warningLog records the summary of every warning the provider answers an
-// apply with: the testing library does not expose apply warnings.
+// warningLog records the summary of every warning the provider answers a
+// plan or an apply with: the testing library does not expose warnings.
 type warningLog struct {
 	mu       sync.Mutex
 	warnings []string
@@ -260,7 +260,7 @@ func (l *warningLog) has(summary string) bool {
 	return slices.Contains(l.all(), summary)
 }
 
-// providers are the provider factories with every apply recorded in l.
+// providers are the provider factories with every plan and apply recorded in l.
 func (l *warningLog) providers() map[string]func() (tfprotov6.ProviderServer, error) {
 	return map[string]func() (tfprotov6.ProviderServer, error){
 		providerTypeName: func() (tfprotov6.ProviderServer, error) {
@@ -273,7 +273,7 @@ func (l *warningLog) providers() map[string]func() (tfprotov6.ProviderServer, er
 	}
 }
 
-// recordingServer is a provider server that records the warnings of each apply.
+// recordingServer is a provider server that records the warnings of each plan and apply.
 type recordingServer struct {
 	tfprotov6.ProviderServer
 	log *warningLog
@@ -281,6 +281,14 @@ type recordingServer struct {
 
 func (s *recordingServer) ApplyResourceChange(ctx context.Context, req *tfprotov6.ApplyResourceChangeRequest) (*tfprotov6.ApplyResourceChangeResponse, error) {
 	resp, err := s.ProviderServer.ApplyResourceChange(ctx, req)
+	if resp != nil {
+		s.log.add(resp.Diagnostics)
+	}
+	return resp, err
+}
+
+func (s *recordingServer) PlanResourceChange(ctx context.Context, req *tfprotov6.PlanResourceChangeRequest) (*tfprotov6.PlanResourceChangeResponse, error) {
+	resp, err := s.ProviderServer.PlanResourceChange(ctx, req)
 	if resp != nil {
 		s.log.add(resp.Diagnostics)
 	}

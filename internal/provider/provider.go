@@ -100,6 +100,7 @@ func (p *ignitifyProvider) Resources(_ context.Context) []func() resource.Resour
 		newTaskResource,
 		newDeploymentResource,
 		newHookResource,
+		newScheduleResource,
 	}
 }
 
