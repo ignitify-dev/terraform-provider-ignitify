@@ -197,7 +197,7 @@ and set `filesystem_mirror { path = "<mirror>" }` in the same file.
 | `make test-terraform` | The same plans and applies, run by a pinned Terraform binary (a test tool only; it is not shipped). No network. |
 | `make lint` | `go vet` and a `gofmt` check. |
 | `make tidy` | `go mod tidy`. |
-| `make testacc` | Acceptance tests with OpenTofu against a real tenant. Needs `IGNITIFY_API_URL` and `IGNITIFY_API_KEY` (an owner key). They create objects with random names and destroy them. The deployment test builds twice and needs a tier with webhooks and two free deployment slots. |
+| `make testacc` | Acceptance tests with OpenTofu (or Terraform: `TESTACC_CLI=terraform`) against a real tenant. Needs `IGNITIFY_API_URL` and `IGNITIFY_API_KEY` (an owner key). They create objects with random names and destroy them. The deployment test builds twice and needs a tier with webhooks and two free deployment slots. |
 | `make check-cases PLATFORM_DIR=<path>` | Checks that `internal/source/testdata/cases.json` (the shared file-selection cases) equals the platform's copy byte for byte. Skipped without `PLATFORM_DIR`. |
 | `make docs` | Generate the registry docs in `docs/` with a pinned `tfplugindocs`. |
 | `make docs-check` | Fail when `docs/` differs from what `make docs` makes. |

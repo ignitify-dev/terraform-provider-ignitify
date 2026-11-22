@@ -22,8 +22,11 @@ import (
 // with random names, and destroy them at the end. The deployment test needs a
 // tier with webhooks and two free deployment slots.
 
+// accVersion is the provider version the tests serve and name in the User-Agent.
+const accVersion = "acc"
+
 var accProviders = map[string]func() (tfprotov6.ProviderServer, error){
-	providerTypeName: providerserver.NewProtocol6WithError(New("acc")()),
+	providerTypeName: providerserver.NewProtocol6WithError(New(accVersion)()),
 }
 
 // accName is a random user or group name (the charset is lower case).

@@ -63,18 +63,23 @@ test-terraform: testacc-image
 	$(DOCKER_RUN) $(TERRAFORM_ENV) $(TESTACC_IMAGE) go test -count=1 -run '^TestTofu' -v ./internal/provider/
 
 # Acceptance tests create real objects. They need IGNITIFY_API_URL and
-# IGNITIFY_API_KEY (an owner key) in the environment, and run OpenTofu.
+# IGNITIFY_API_KEY (an owner key) in the environment. IGNITIFY_ACC_QUOTA_API_KEY,
+# when set, is a key of a devtrial tenant for the schedule quota test.
 # TESTACC_NETWORK, when set, is the test container's docker network (for
 # example container:<name> to share a local forwarder's network); empty keeps
-# the default network.
+# the default network. TESTACC_CLI is tofu (the default) or terraform.
+# TESTACC_RUN selects the tests, for example ^TestAccSchedule.
 TESTACC_NETWORK ?=
+TESTACC_CLI ?= tofu
+TESTACC_RUN ?= ^TestAcc
+TESTACC_ENV = $(if $(filter terraform,$(TESTACC_CLI)),$(TERRAFORM_ENV),$(TOFU_ENV))
 
 testacc: testacc-image
 	@test -n "$$IGNITIFY_API_URL" || (echo "IGNITIFY_API_URL is not set" && exit 1)
 	@test -n "$$IGNITIFY_API_KEY" || (echo "IGNITIFY_API_KEY is not set" && exit 1)
-	$(DOCKER_RUN) $(if $(TESTACC_NETWORK),--network $(TESTACC_NETWORK)) $(TOFU_ENV) -e TF_ACC=1 \
-		-e IGNITIFY_API_URL -e IGNITIFY_API_KEY \
-		$(TESTACC_IMAGE) go test -count=1 -v -timeout 30m -run '^TestAcc' ./internal/provider/...
+	$(DOCKER_RUN) $(if $(TESTACC_NETWORK),--network $(TESTACC_NETWORK)) $(TESTACC_ENV) -e TF_ACC=1 \
+		-e IGNITIFY_API_URL -e IGNITIFY_API_KEY -e IGNITIFY_ACC_QUOTA_API_KEY \
+		$(TESTACC_IMAGE) go test -count=1 -v -timeout 30m -run '$(TESTACC_RUN)' ./internal/provider/...
 
 # The shared selection cases are a copy of the platform's file and must equal
 # it byte for byte. PLATFORM_DIR is a checkout of the platform source; without

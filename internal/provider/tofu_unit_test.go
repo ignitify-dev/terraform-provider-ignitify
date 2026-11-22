@@ -264,7 +264,7 @@ func (l *warningLog) has(summary string) bool {
 func (l *warningLog) providers() map[string]func() (tfprotov6.ProviderServer, error) {
 	return map[string]func() (tfprotov6.ProviderServer, error){
 		providerTypeName: func() (tfprotov6.ProviderServer, error) {
-			inner, err := providerserver.NewProtocol6WithError(New("acc")())()
+			inner, err := providerserver.NewProtocol6WithError(New(accVersion)())()
 			if err != nil {
 				return nil, err
 			}
