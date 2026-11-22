@@ -3,12 +3,12 @@
 page_title: "ignitify_schedule Resource - ignitify"
 subcategory: ""
 description: |-
-  A recurring schedule of a task. The platform starts a run of the task's newest ready deployment at each slot of the cron expression, with the payload and run settings given here. A code update (a new deployment) keeps the schedule. Needs runs.read and runs.write (runs.write also lets the key start runs). The payload is stored in the state in plain text: never put a secret in it. The task reads secrets through ignitify_secret. An auto-paused schedule (paused by the platform: after repeated failures, or for a plan limit) is not changed by an apply: the plan warns, and ignitify schedule:resume resumes it. If the plan does not include recurring schedules, the resume is refused: change plan first.
+  A recurring schedule of a task. The platform starts a run of the task's newest ready deployment at each slot of the cron expression, with the payload and run settings given here. A code update (a new deployment) keeps the schedule. Needs schedules.read and schedules.write (tasks.read to import). The payload is stored in the state in plain text: never put a secret in it. The task reads secrets through ignitify_secret. An auto-paused schedule (paused by the platform: after repeated failures, or for a plan limit) is not changed by an apply: the plan warns, and ignitify schedule:resume resumes it. If the plan does not include recurring schedules, the resume is refused: change plan first.
 ---
 
 # ignitify_schedule (Resource)
 
-A recurring schedule of a task. The platform starts a run of the task's newest ready deployment at each slot of the cron expression, with the payload and run settings given here. A code update (a new deployment) keeps the schedule. Needs runs.read and runs.write (runs.write also lets the key start runs). **The payload is stored in the state in plain text: never put a secret in it.** The task reads secrets through ignitify_secret. An auto-paused schedule (paused by the platform: after repeated failures, or for a plan limit) is not changed by an apply: the plan warns, and `ignitify schedule:resume` resumes it. If the plan does not include recurring schedules, the resume is refused: change plan first.
+A recurring schedule of a task. The platform starts a run of the task's newest ready deployment at each slot of the cron expression, with the payload and run settings given here. A code update (a new deployment) keeps the schedule. Needs schedules.read and schedules.write (tasks.read to import). **The payload is stored in the state in plain text: never put a secret in it.** The task reads secrets through ignitify_secret. An auto-paused schedule (paused by the platform: after repeated failures, or for a plan limit) is not changed by an apply: the plan warns, and `ignitify schedule:resume` resumes it. If the plan does not include recurring schedules, the resume is refused: change plan first.
 
 ## Example Usage
 

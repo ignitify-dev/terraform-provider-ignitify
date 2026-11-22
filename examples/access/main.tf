@@ -38,9 +38,11 @@ resource "ignitify_group" "deployers" {
     "hooks.read",
     "hooks.write",
     "runs.read",
-    # ignitify_schedule needs runs.write; it also lets the key start runs
-    # (ignitify task:run). Leave it out when CI manages no schedule.
-    "runs.write",
+    # ignitify_schedule needs schedules.read and schedules.write. A schedule
+    # starts runs later and outlives the key that made it. Leave them out when
+    # CI manages no schedule.
+    "schedules.read",
+    "schedules.write",
   ]
   members = [ignitify_user.ci.name]
 }

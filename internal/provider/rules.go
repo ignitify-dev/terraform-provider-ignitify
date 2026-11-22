@@ -50,6 +50,8 @@ var permissionCatalogue = []string{
 	"secrets.write",
 	"hooks.read",
 	"hooks.write",
+	"schedules.read",
+	"schedules.write",
 	"usage.read",
 }
 

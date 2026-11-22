@@ -7,6 +7,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
 	"github.com/ignitify-dev/terraform-provider-ignitify/internal/client"
@@ -158,5 +161,26 @@ func TestPlanGroupOpsGrantsBeforeRevokes(t *testing.T) {
 	}
 	if !slices.Equal(have.permissions, []string{"a"}) {
 		t.Fatal("input mutated")
+	}
+}
+
+func TestPermissionValidatorAcceptsTheScheduleNames(t *testing.T) {
+	check := func(name string) bool {
+		resp := &validator.StringResponse{}
+		permissionValidator().ValidateString(context.Background(), validator.StringRequest{
+			Path:        path.Root("permissions"),
+			ConfigValue: types.StringValue(name),
+		}, resp)
+		return !resp.Diagnostics.HasError()
+	}
+	for _, name := range []string{"schedules.read", "schedules.write", "runs.write"} {
+		if !check(name) {
+			t.Errorf("%s refused, want accepted", name)
+		}
+	}
+	for _, name := range []string{"schedules.admin", "owner"} {
+		if check(name) {
+			t.Errorf("%s accepted, want refused", name)
+		}
 	}
 }

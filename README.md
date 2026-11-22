@@ -18,7 +18,7 @@ address `registry.terraform.io/ignitify-dev/ignitify` as the `source`.
 | Resource | `ignitify_task` | the task slug | a key with `tasks.read` and `tasks.write` |
 | Resource | `ignitify_deployment` | the task slug, or `<task slug>/<deployment id>` | a key with `tasks.read` and `deployments.*` (`hooks.write` for notify) |
 | Resource | `ignitify_hook` | `<task slug>/<hook resource_id>` | a key with `hooks.read` and `hooks.write` |
-| Resource | `ignitify_schedule` | `<task slug>/<schedule_id>` | a key with `runs.read` and `runs.write` (`tasks.read` to import) |
+| Resource | `ignitify_schedule` | `<task slug>/<schedule_id>` | a key with `schedules.read` and `schedules.write` (`tasks.read` to import) |
 | Data source | `ignitify_whoami` | — | any key |
 
 The provider never creates a tenant, a tier or a purchase, and never creates

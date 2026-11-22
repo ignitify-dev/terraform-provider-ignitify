@@ -1,8 +1,8 @@
 # App resources: a task, its deployed code, a hook and a nightly schedule that
 # start it, and the secrets it reads. Apply with a USER key (IGNITIFY_API_KEY)
 # whose user is in a group with tasks.*, deployments.*, hooks.*, runs.read,
-# runs.write, secrets.read and secrets.write, for example the key made by
-# ../access. runs.write also lets the key start runs.
+# schedules.read, schedules.write, secrets.read and secrets.write, for example
+# the key made by ../access. schedules.write also lets the key start runs later.
 
 terraform {
   required_version = ">= 1.11"
