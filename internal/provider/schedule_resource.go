@@ -53,6 +53,7 @@ type scheduleModel struct {
 	ScheduleID    types.String `tfsdk:"schedule_id"`
 	Status        types.String `tfsdk:"status"`
 	PauseReason   types.String `tfsdk:"pause_reason"`
+	PauseDetail   types.String `tfsdk:"pause_detail"`
 	PayloadSHA256 types.String `tfsdk:"payload_sha256"`
 	CreatedBy     types.String `tfsdk:"created_by"`
 	CreatedAt     types.String `tfsdk:"created_at"`
@@ -107,7 +108,8 @@ const (
 	scheduleDescription = "A recurring schedule of a task. The platform starts a run of the task's newest ready deployment at each slot of the cron expression, with the payload and run settings given here. " +
 		"A code update (a new deployment) keeps the schedule. Needs runs.read and runs.write (runs.write also lets the key start runs). " +
 		"%sThe payload is stored in the state in plain text: never put a secret in it.%s The task reads secrets through ignitify_secret. " +
-		"An auto-paused schedule (paused by the platform after failures) is not changed by an apply: the plan warns, and `ignitify schedule:resume` resumes it."
+		"An auto-paused schedule (paused by the platform: after repeated failures, or for a plan limit) is not changed by an apply: the plan warns, and `ignitify schedule:resume` resumes it. " +
+		"If the plan does not include recurring schedules, the resume is refused: change plan first."
 	payloadDescription = "The run payload as JSON (use `jsonencode`). %sStored in the state in plain text: never a secret.%s " +
 		"A payload changed outside Terraform shows as a change. Empty after an import, so the first apply sends it."
 )
@@ -192,6 +194,10 @@ func (r *scheduleResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"pause_reason": schema.StringAttribute{
 				Description: "Why the platform paused the schedule; null unless `status` is `auto_paused`.",
+				Computed:    true,
+			},
+			"pause_detail": schema.StringAttribute{
+				Description: "The plan field of a `plan-limit` pause (`max_schedules`: the plan does not include recurring schedules); otherwise null.",
 				Computed:    true,
 			},
 			"payload_sha256": schema.StringAttribute{
@@ -308,6 +314,7 @@ func withServerValues(m scheduleModel, s client.Schedule) scheduleModel {
 	m.ScheduleID = types.StringValue(s.ScheduleID)
 	m.Status = types.StringValue(s.Status)
 	m.PauseReason = types.StringPointerValue(s.PauseReason)
+	m.PauseDetail = types.StringPointerValue(s.PauseDetail)
 	m.PayloadSHA256 = stringOrNull(s.PayloadSHA256)
 	m.CreatedBy = stringOrNull(s.CreatedBy)
 	m.CreatedAt = stringOrNull(s.CreatedAt)
@@ -443,17 +450,24 @@ func scheduleEdit(plan, state scheduleModel) client.ScheduleEdit {
 }
 
 // autoPausedDetail is the plan warning's text for a schedule the platform
-// paused, "" for any other. Pure.
+// paused, "" for any other. A plan without recurring schedules refuses the
+// resume, so that warning names the plan change first. Pure.
 func autoPausedDetail(state scheduleModel) string {
 	if state.Status.ValueString() != client.ScheduleAutoPaused {
 		return ""
+	}
+	id := state.ScheduleID.ValueString()
+	if state.PauseReason.ValueString() == client.SchedulePauseReasonPlanLimit &&
+		state.PauseDetail.ValueString() == client.SchedulePauseDetailNoSchedules {
+		return fmt.Sprintf("Schedule %s is auto-paused (%s): recurring schedules are not included in your plan. An apply does not resume it, and a resume is refused: change plan first, then resume it with `ignitify schedule:resume %s`.",
+			id, client.SchedulePauseReasonPlanLimit, id)
 	}
 	reason := state.PauseReason.ValueString()
 	if reason == "" {
 		reason = "no reason given"
 	}
 	return fmt.Sprintf("Schedule %s is auto-paused (%s). An apply does not resume it: fix the cause, then resume it with `ignitify schedule:resume %s`.",
-		state.ScheduleID.ValueString(), reason, state.ScheduleID.ValueString())
+		id, reason, id)
 }
 
 // scheduleErrorDiagnostic is an API error of a schedule call; a refusal that
@@ -606,6 +620,7 @@ func (r *scheduleResource) ImportState(ctx context.Context, req resource.ImportS
 		ScheduleID:    types.StringValue(schedule.ScheduleID),
 		Status:        types.StringNull(),
 		PauseReason:   types.StringNull(),
+		PauseDetail:   types.StringNull(),
 		PayloadSHA256: types.StringNull(),
 		CreatedBy:     types.StringNull(),
 		CreatedAt:     types.StringNull(),

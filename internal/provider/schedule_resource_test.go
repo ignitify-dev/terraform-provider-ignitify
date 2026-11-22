@@ -235,6 +235,49 @@ func TestScheduleAutoPausedIsNoChangeAndWarns(t *testing.T) {
 	}
 }
 
+// A plan without recurring schedules refuses the resume, so its warning names
+// the plan change first; any other pause keeps the resume hint.
+func TestScheduleAutoPausedForNoSchedulesSaysChangePlan(t *testing.T) {
+	fake, _, h := newScheduleHarness(t)
+	config := scheduleConfig(nil)
+	state, diags := h.create(config)
+	mustOK(t, diags)
+	id := stringAt(t, state, "schedule_id").ValueString()
+	reason, detail := client.SchedulePauseReasonPlanLimit, client.SchedulePauseDetailNoSchedules
+	fake.editSchedule(id, func(s *fakeSchedule) {
+		s.status, s.pauseReason, s.pauseDetail = client.ScheduleAutoPaused, &reason, &detail
+	})
+
+	read, diags := h.read(state)
+	mustOK(t, diags)
+	if stringAt(t, read, "pause_detail").ValueString() != detail {
+		t.Fatal("pause_detail must show the plan field of the pause")
+	}
+	_, _, diags = h.planUpdate(read, config)
+	mustOK(t, diags)
+	warnings := diags.Warnings()
+	if len(warnings) != 1 || warnings[0].Summary() != autoPausedSummary {
+		t.Fatalf("want one auto-pause warning, got %v", diags)
+	}
+	text := warnings[0].Detail()
+	for _, want := range []string{id, "not included in your plan", "change plan first", "schedule:resume"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("warning detail %q must contain %q", text, want)
+		}
+	}
+
+	other := "max_storage_mib"
+	for _, d := range []*string{nil, &other} {
+		m := scheduleModel{
+			ScheduleID: types.StringValue(id), Status: types.StringValue(client.ScheduleAutoPaused),
+			PauseReason: types.StringValue(reason), PauseDetail: types.StringPointerValue(d),
+		}
+		if got := autoPausedDetail(m); strings.Contains(got, "change plan") || !strings.Contains(got, "fix the cause") {
+			t.Fatalf("a plan-limit pause for another field keeps the resume hint, got %q", got)
+		}
+	}
+}
+
 // The fake answers as the server does where the provider's rules depend on it.
 func TestFakeScheduleAnswersAsTheServer(t *testing.T) {
 	if got := string(jsonbOrder(map[string]any{"a_long_key": 2, "zz": map[string]any{"bb": 1, "a": 2}})); got != `{"zz":{"a":2,"bb":1},"a_long_key":2}` {

@@ -187,6 +187,7 @@ type Schedule struct {
 	Overlap       string              `json:"overlap"`
 	Status        string              `json:"status"`
 	PauseReason   *string             `json:"pause_reason"`
+	PauseDetail   *string             `json:"pause_detail"`
 	CreatedBy     string              `json:"created_by"`
 	CreatedAt     string              `json:"created_at"`
 	RunSettings   ScheduleRunSettings `json:"run_settings"`
@@ -202,11 +203,19 @@ type ScheduleRunSettings struct {
 }
 
 // The schedule statuses. A tenant sets active or paused; auto_paused is the
-// platform's, set when the schedule keeps failing.
+// platform's, set after repeated failures or for a plan limit.
 const (
 	ScheduleActive     = "active"
 	SchedulePaused     = "paused"
 	ScheduleAutoPaused = "auto_paused"
+)
+
+// A platform pause for a plan limit, and the plan field of a plan that has no
+// recurring schedules. A resume of such a schedule is refused until the plan
+// changes.
+const (
+	SchedulePauseReasonPlanLimit   = "plan-limit"
+	SchedulePauseDetailNoSchedules = "max_schedules"
 )
 
 // ScheduleCreate is the body of a schedule create. A nil optional field is not

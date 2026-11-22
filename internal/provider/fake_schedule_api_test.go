@@ -35,6 +35,7 @@ type fakeSchedule struct {
 	overlap     string
 	status      string
 	pauseReason *string
+	pauseDetail *string
 	template    map[string]any
 	deleted     bool
 }
@@ -102,7 +103,7 @@ func (s *fakeSchedule) answer(omitDigest bool) map[string]any {
 	}
 	out := map[string]any{
 		"kind": "cron", "schedule_id": s.id, "task_id": s.taskID, "cron": s.cron, "timezone": s.timezone,
-		"overlap": s.overlap, "status": s.status, "pause_reason": s.pauseReason, "pause_detail": nil,
+		"overlap": s.overlap, "status": s.status, "pause_reason": s.pauseReason, "pause_detail": s.pauseDetail,
 		"next_fire_at": nil, "last_fire_at": nil, "last_outcome": nil, "consecutive_misses": 0,
 		"created_by": "key_fake", "created_at": fakeTime, "updated_at": fakeTime,
 		"run_settings": settings, "next_fire_times": []string{},
@@ -290,7 +291,7 @@ func (f *fakeAPI) patchSchedule(w http.ResponseWriter, r *http.Request, body map
 			return
 		}
 		if status != next.status {
-			next.status, next.pauseReason = status, nil
+			next.status, next.pauseReason, next.pauseDetail = status, nil, nil
 		}
 	}
 	for _, field := range fakeTemplateFields {

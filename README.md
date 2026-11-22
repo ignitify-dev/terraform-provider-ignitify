@@ -153,6 +153,9 @@ With a user key, an access resource fails with HTTP 403, reason `owner-required`
   as a change, and the apply sets it back. A schedule the platform paused
   (`status = "auto_paused"`) is not a change: every plan warns, and
   `ignitify schedule:resume <schedule_id>` resumes it once the cause is fixed.
+  If the plan does not include recurring schedules (`pause_reason =
+  "plan-limit"`, `pause_detail = "max_schedules"`), the resume is refused:
+  change plan first.
   After an import `payload` is empty, so the first apply sends it. A task
   destroy deletes its schedules. Paused schedules count against the plan's
   schedule limit; a create over it fails at once (`schedule-quota`).
