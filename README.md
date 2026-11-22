@@ -30,7 +30,7 @@ an owner key. It takes an existing key.
   uses a write-only argument (`value_wo`), which older versions do not support.
 - **An Ignitify API that serves `GET /keys/{id}`, `GET /secrets/{name}`,
   `GET /tasks/{id}`, `GET /hooks/{id}` and task hooks (`/tasks/{id}/hooks`),
-  and that reads the task config from the uploaded archive.
+  and that reads the task config from the uploaded archive.**
   `ignitify_schedule` needs the recurring-schedule routes (`/schedules`) and
   `payload_sha256` in the schedule answer; without it the provider warns and
   cannot see a payload changed outside Terraform.
